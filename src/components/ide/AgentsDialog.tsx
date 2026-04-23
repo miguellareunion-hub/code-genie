@@ -255,6 +255,53 @@ export function AgentsDialog({ open, onClose }: Props) {
                   className="mt-1 w-full rounded border border-border bg-input px-2 py-1 text-sm text-foreground outline-none focus:border-primary"
                 />
               </label>
+
+              {/* Tool-calling toggle */}
+              <div className="mt-3 rounded-md border border-border bg-muted/30 p-2">
+                <label className="flex cursor-pointer items-start gap-2">
+                  <input
+                    type="checkbox"
+                    checked={settings.useNativeTools}
+                    onChange={(e) => {
+                      setSettings((s) => ({ ...s, useNativeTools: e.target.checked }));
+                      setDirty(true);
+                    }}
+                    className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+                  />
+                  <span className="flex-1">
+                    <span className="block text-xs font-medium text-foreground">
+                      Mode tool-calling 🛠️
+                    </span>
+                    <span className="mt-0.5 block text-[10px] leading-snug text-muted-foreground">
+                      Les agents utilisent des outils (read/write/exec/web) en
+                      boucle autonome, comme l'agent IDE. Désactive pour revenir
+                      au pipeline {`<lov-write>`} classique.
+                    </span>
+                  </span>
+                </label>
+              </div>
+
+              <label className="mt-2 block px-2 text-xs text-muted-foreground">
+                Max itérations d'outils
+                <input
+                  type="number"
+                  min={1}
+                  max={50}
+                  disabled={!settings.useNativeTools}
+                  value={settings.maxToolIterations}
+                  onChange={(e) => {
+                    setSettings((s) => ({
+                      ...s,
+                      maxToolIterations: Math.max(
+                        1,
+                        Math.min(50, Number(e.target.value) || 1),
+                      ),
+                    }));
+                    setDirty(true);
+                  }}
+                  className="mt-1 w-full rounded border border-border bg-input px-2 py-1 text-sm text-foreground outline-none focus:border-primary disabled:opacity-50"
+                />
+              </label>
             </div>
           </aside>
 
