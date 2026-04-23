@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Play, Square, Loader2, ExternalLink, Settings as SettingsIcon, Trash2, Server } from "lucide-react";
+import { Play, Square, Loader2, ExternalLink, Settings as SettingsIcon, Trash2, Server, Wrench } from "lucide-react";
 import type { FileNode } from "@/lib/projects";
 import { loadRunnerSettings, saveRunnerSettings, type RunnerSettings } from "@/lib/runnerSettings";
+import { pushRuntimeError } from "@/lib/runtimeErrors";
 
 interface Props {
   projectId: string;
@@ -10,6 +11,30 @@ interface Props {
 
 type LogEntry = { level: string; line: string; ts: number };
 type Status = "idle" | "starting" | "installing" | "running" | "stopped" | "error";
+
+/** Heuristic: is this stderr line a real error (vs a warning, info, color code)? */
+function isLikelyError(line: string): boolean {
+  const lower = line.toLowerCase();
+  if (/^npm warn/i.test(line)) return false;
+  if (/^npm notice/i.test(line)) return false;
+  return (
+    /error[:\s]/i.test(lower) ||
+    /\b(syntaxerror|typeerror|referenceerror|rangeerror)\b/i.test(lower) ||
+    /\bcannot find module\b/i.test(lower) ||
+    /\bdoes not provide an export\b/i.test(lower) ||
+    /\beaddrinuse\b/i.test(lower) ||
+    /\berr_module_not_found\b/i.test(lower) ||
+    /^\s*at\s+\S+/i.test(line) // stack frame
+  );
+}
+
+/** Send an error line to the AgentChat to ask the Fixer to repair it. */
+function sendToFixer(errorLine: string) {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent("lovable:fix-runner-error", { detail: { error: errorLine } }),
+  );
+}
 
 export function RunnerPanel({ projectId, files }: Props) {
   const [settings, setSettings] = useState<RunnerSettings>(() => loadRunnerSettings());
@@ -40,7 +65,18 @@ export function RunnerPanel({ projectId, files }: Props) {
     ws.onmessage = (ev) => {
       try {
         const m = JSON.parse(ev.data);
-        if (m.type === "log") setLogs((p) => [...p.slice(-1999), { level: m.level, line: m.line, ts: m.ts }]);
+        if (m.type === "log") {
+          const entry = { level: m.level, line: m.line, ts: m.ts };
+          setLogs((p) => [...p.slice(-1999), entry]);
+          // Forward stderr / process exit lines to the global runtime error bus
+          // so the Fixer agent picks them up automatically.
+          if (m.level === "stderr" && typeof m.line === "string") {
+            const trimmed = m.line.trim();
+            if (trimmed && isLikelyError(trimmed)) {
+              pushRuntimeError({ level: "stderr", msg: trimmed, ts: m.ts || Date.now() });
+            }
+          }
+        }
         if (m.type === "status") setStatus(m.status as Status);
       } catch (_) {
         /* ignore */
@@ -251,16 +287,30 @@ export function RunnerPanel({ projectId, files }: Props) {
                 Logs du serveur Node apparaîtront ici. Configure URL + token, puis clique <strong>Run</strong>.
               </p>
             ) : (
-              logs.map((l, i) => (
-                <div key={i} className={
-                  l.level === "stderr" ? "text-red-400" :
-                  l.level === "system" ? "text-emerald-300" :
-                  "text-foreground/90"
-                }>
-                  <span className="opacity-50">[{new Date(l.ts).toLocaleTimeString([], { hour12: false })}]</span>{" "}
-                  <span className="whitespace-pre-wrap">{l.line}</span>
-                </div>
-              ))
+              logs.map((l, i) => {
+                const fixable = l.level === "stderr" && isLikelyError(l.line);
+                return (
+                  <div key={i} className={
+                    "group flex items-start gap-1 " + (
+                      l.level === "stderr" ? "text-red-400" :
+                      l.level === "system" ? "text-emerald-300" :
+                      "text-foreground/90"
+                    )
+                  }>
+                    <span className="opacity-50 shrink-0">[{new Date(l.ts).toLocaleTimeString([], { hour12: false })}]</span>
+                    <span className="whitespace-pre-wrap flex-1">{l.line}</span>
+                    {fixable && (
+                      <button
+                        onClick={() => sendToFixer(l.line)}
+                        title="Demander au Fixer agent de corriger cette erreur"
+                        className="shrink-0 rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] text-amber-300 opacity-0 transition group-hover:opacity-100 hover:bg-amber-500/40"
+                      >
+                        <Wrench className="inline h-2.5 w-2.5" /> Fix
+                      </button>
+                    )}
+                  </div>
+                );
+              })
             )}
           </div>
         </div>
