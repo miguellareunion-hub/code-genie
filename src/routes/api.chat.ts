@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-type AgentRole = "builder" | "fixer";
+type AgentRole = "builder" | "fixer" | "planner";
 
 type ChatBody = {
   messages: { role: "user" | "assistant" | "system"; content: string }[];
