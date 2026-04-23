@@ -14,8 +14,13 @@ type ChatBody = {
 
 const BASE_RULES = `# Environment constraints
 - The IDE preview runs in a sandboxed iframe (HTML/CSS/JS) OR in the local Node Runner if the user enabled it.
-- Default to a browser-only project (index.html + style.css + script.js) UNLESS the user explicitly asks for Node/Express/server code.
-- If you DO write a Node project (because the user asked for one), it must be runnable with \`node server.js\` or \`npm run dev\`. Always include a \`package.json\` with the right \`scripts\` and \`dependencies\`.
+- **Stack selection (CRITICAL)** — pick the runtime BEFORE writing any file:
+  - **Node project** (write a \`package.json\` + \`server.js\` / \`index.js\`) IF the user mentions ANY of: "node", "nodejs", "node.js", "express", "serveur", "server", "backend", "API", "REST", "websocket", "ws", "socket.io", "bot" (trading bot, discord bot, telegram bot…), "binance", "ccxt", "scraping", "puppeteer", "cron", "cli", "scheduler", "database", "postgres", "mysql", "mongodb", "prisma", "axios" used server-side, "fetch" to a private API with secret keys, OR anything that needs \`process.env\` for SECRET keys (API keys that must NOT leak to the browser).
+  - **Browser project** (\`index.html\` + \`style.css\` + \`script.js\`, NO package.json) ONLY for pure UI demos: landing page, calculator, todo list, game, animation, portfolio, form with no secret backend.
+  - When in doubt → choose Node. A trading bot, a price tracker hitting an exchange, anything touching real money or private credentials is ALWAYS Node.
+- A Node project MUST include: \`package.json\` with \`"scripts": { "dev": "node server.js" }\` (or "start"), the entry file referenced in scripts, and \`"type": "module"\` if you use \`import/export\` syntax. Add \`"dependencies"\` for every \`import\` of an npm package.
+- A Node project MUST NOT contain an \`index.html\` as the main UI unless it is served BY the Node server (e.g. \`app.use(express.static('public'))\`). If you need a UI, put it under \`public/\` and serve it from express.
+
 
 # Action tags (the IDE parses these and applies them automatically)
 To create or fully overwrite a file:
