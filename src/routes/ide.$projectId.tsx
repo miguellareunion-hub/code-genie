@@ -9,6 +9,7 @@ import {
   Settings as SettingsIcon,
   Bot,
   Download,
+  Server,
 } from "lucide-react";
 import JSZip from "jszip";
 import { useProject } from "@/hooks/useProject";
@@ -17,6 +18,7 @@ import { CodeEditor } from "@/components/ide/CodeEditor";
 import { PreviewPane } from "@/components/ide/PreviewPane";
 import { Terminal, type ConsoleEntry } from "@/components/ide/Terminal";
 import { AgentChat } from "@/components/ide/AgentChat";
+import { RunnerPanel } from "@/components/ide/RunnerPanel";
 import { SettingsDialog } from "@/components/ide/SettingsDialog";
 import { AgentsDialog } from "@/components/ide/AgentsDialog";
 import { cn } from "@/lib/utils";
@@ -31,7 +33,7 @@ export const Route = createFileRoute("/ide/$projectId")({
   component: IdePage,
 });
 
-type RightTab = "preview" | "agent";
+type RightTab = "preview" | "agent" | "runner";
 type BottomTab = "terminal";
 
 function IdePage() {
@@ -189,6 +191,12 @@ function IdePage() {
             label="Agent"
           />
           <TabButton
+            active={rightTab === "runner"}
+            onClick={() => setRightTab("runner")}
+            icon={<Server className="h-3.5 w-3.5" />}
+            label="Runner"
+          />
+          <TabButton
             active={bottomOpen}
             onClick={() => setBottomOpen((v) => !v)}
             icon={<TerminalSquare className="h-3.5 w-3.5" />}
@@ -281,6 +289,9 @@ function IdePage() {
               onSwitchToPreview={() => setRightTab("preview")}
               getLatestFiles={() => project.files}
             />
+          </div>
+          <div className={cn("h-full", rightTab === "runner" ? "block" : "hidden")}>
+            <RunnerPanel projectId={project.id} files={project.files} />
           </div>
         </aside>
       </div>
