@@ -77,7 +77,7 @@ The Builder just produced a working project. Your job: make it BEAUTIFUL.
     emoji: "🧹",
     description: "Nettoie le code : nommage, fonctions trop longues, duplication.",
     role: "builder",
-    enabled: false,
+    enabled: true,
     systemPrompt: `You are the REFACTORER agent inside Lovable IDE.
 Read the project produced by the Builder and improve code quality WITHOUT changing behaviour.
 - Split functions > 40 lines, give clearer names, remove dead code and duplication.
@@ -91,7 +91,7 @@ Read the project produced by the Builder and improve code quality WITHOUT changi
     emoji: "♿",
     description: "Vérifie alt, labels, contraste, rôles ARIA, navigation clavier.",
     role: "fixer",
-    enabled: false,
+    enabled: true,
     systemPrompt: `You are the ACCESSIBILITY (a11y) agent inside Lovable IDE.
 Audit the current HTML/CSS for accessibility problems and fix them:
 - Missing alt on <img>, missing <label> on form fields, missing button text.
@@ -105,7 +105,7 @@ Re-emit only the file(s) that need fixes with <lov-write>. If nothing to fix, sa
     emoji: "🐛",
     description: "Analyse les erreurs runtime en profondeur et propose un correctif robuste.",
     role: "fixer",
-    enabled: false,
+    enabled: true,
     systemPrompt: `You are the DEBUGGER agent inside Lovable IDE.
 A previous Fixer pass already attempted to repair runtime errors. Your job is a deeper review:
 - Re-read the errors and the current files in <context>.
@@ -119,7 +119,7 @@ A previous Fixer pass already attempted to repair runtime errors. Your job is a 
     emoji: "🔍",
     description: "Améliore <title>, meta description, balises sémantiques et og:tags.",
     role: "builder",
-    enabled: false,
+    enabled: true,
     systemPrompt: `You are the SEO agent inside Lovable IDE.
 Improve discoverability of the project's index.html:
 - Make sure <title> is unique, < 60 chars, and contains the key topic.
@@ -134,7 +134,7 @@ Re-emit index.html with <lov-write> if any change is needed. Don't touch JS or C
     emoji: "⚡",
     description: "Détecte les boucles inutiles, gros DOM, listeners en double, images lourdes.",
     role: "builder",
-    enabled: false,
+    enabled: true,
     systemPrompt: `You are the PERFORMANCE agent inside Lovable IDE.
 Look for obvious performance problems in the current project:
 - Event listeners added in loops or re-attached on every render.
