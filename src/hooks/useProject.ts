@@ -26,71 +26,80 @@ export function useProject(projectId: string | undefined) {
     setLoaded(true);
   }, [projectId]);
 
-  const persist = useCallback((next: Project) => {
-    setProject(next);
-    upsertProject(next);
+  const persist = useCallback((updater: Project | ((current: Project | null) => Project | null)) => {
+    setProject((current) => {
+      const next = typeof updater === "function" ? updater(current) : updater;
+      if (!next) return current;
+      upsertProject(next);
+      return next;
+    });
   }, []);
 
   const updateFile = useCallback(
     (fileId: string, content: string) => {
-      if (!project) return;
-      const next: Project = {
-        ...project,
-        files: project.files.map((f) => (f.id === fileId ? { ...f, content } : f)),
-      };
-      persist(next);
+      persist((current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          files: current.files.map((f) => (f.id === fileId ? { ...f, content } : f)),
+        };
+      });
     },
-    [project, persist],
+    [persist],
   );
 
   const createFile = useCallback(
     (name: string) => {
-      if (!project) return;
-      if (project.files.some((f) => f.name === name)) return;
       const file: FileNode = {
         id: uid(),
         name,
         content: "",
         language: languageFromName(name),
       };
-      const next: Project = { ...project, files: [...project.files, file] };
-      persist(next);
+
+      persist((current) => {
+        if (!current) return current;
+        if (current.files.some((f) => f.name === name)) return current;
+        return { ...current, files: [...current.files, file] };
+      });
       setActiveFileId(file.id);
     },
-    [project, persist],
+    [persist],
   );
 
   const deleteFile = useCallback(
     (fileId: string) => {
-      if (!project) return;
-      const next: Project = { ...project, files: project.files.filter((f) => f.id !== fileId) };
-      persist(next);
-      if (activeFileId === fileId) setActiveFileId(next.files[0]?.id ?? null);
+      persist((current) => {
+        if (!current) return current;
+        const next: Project = { ...current, files: current.files.filter((f) => f.id !== fileId) };
+        if (activeFileId === fileId) setActiveFileId(next.files[0]?.id ?? null);
+        return next;
+      });
     },
-    [project, persist, activeFileId],
+    [persist, activeFileId],
   );
 
   const renameFile = useCallback(
     (fileId: string, newName: string) => {
-      if (!project) return;
-      if (project.files.some((f) => f.name === newName && f.id !== fileId)) return;
-      const next: Project = {
-        ...project,
-        files: project.files.map((f) =>
-          f.id === fileId ? { ...f, name: newName, language: languageFromName(newName) } : f,
-        ),
-      };
-      persist(next);
+      persist((current) => {
+        if (!current) return current;
+        if (current.files.some((f) => f.name === newName && f.id !== fileId)) return current;
+        return {
+          ...current,
+          files: current.files.map((f) =>
+            f.id === fileId ? { ...f, name: newName, language: languageFromName(newName) } : f,
+          ),
+        };
+      });
     },
-    [project, persist],
+    [persist],
   );
 
   const renameProject = useCallback(
     (name: string) => {
-      if (!project) return;
-      persist({ ...project, name });
+      persist((current) => (current ? { ...current, name } : current));
     },
-    [project, persist],
+    [persist],
   );
 
   /**
@@ -100,58 +109,73 @@ export function useProject(projectId: string | undefined) {
    */
   const writeFileByPath = useCallback(
     (path: string, content: string) => {
-      if (!project) return;
-      const existing = project.files.find((f) => f.name === path);
-      if (existing) {
-        const next: Project = {
-          ...project,
-          files: project.files.map((f) =>
-            f.id === existing.id ? { ...f, content } : f,
-          ),
+      const normalizedPath = path.trim();
+      const newFileId = uid();
+
+      persist((current) => {
+        if (!current) return current;
+        const existing = current.files.find((f) => f.name === normalizedPath);
+        if (existing) {
+          return {
+            ...current,
+            files: current.files.map((f) =>
+              f.id === existing.id ? { ...f, content } : f,
+            ),
+          };
+        }
+
+        return {
+          ...current,
+          files: [
+            ...current.files,
+            {
+              id: newFileId,
+              name: normalizedPath,
+              content,
+              language: languageFromName(normalizedPath),
+            },
+          ],
         };
-        persist(next);
-      } else {
-        const file: FileNode = {
-          id: uid(),
-          name: path,
-          content,
-          language: languageFromName(path),
-        };
-        const next: Project = { ...project, files: [...project.files, file] };
-        persist(next);
-        setActiveFileId(file.id);
-      }
+      });
+
+      setActiveFileId((currentId) => currentId ?? newFileId);
     },
-    [project, persist],
+    [persist],
   );
 
   const renameFileByPath = useCallback(
     (from: string, to: string) => {
-      if (!project) return;
-      const f = project.files.find((x) => x.name === from);
-      if (!f) return;
-      if (project.files.some((x) => x.name === to && x.id !== f.id)) return;
-      const next: Project = {
-        ...project,
-        files: project.files.map((x) =>
-          x.id === f.id ? { ...x, name: to, language: languageFromName(to) } : x,
-        ),
-      };
-      persist(next);
+      persist((current) => {
+        if (!current) return current;
+        const fromName = from.trim();
+        const toName = to.trim();
+        const f = current.files.find((x) => x.name === fromName);
+        if (!f) return current;
+        if (current.files.some((x) => x.name === toName && x.id !== f.id)) return current;
+        return {
+          ...current,
+          files: current.files.map((x) =>
+            x.id === f.id ? { ...x, name: toName, language: languageFromName(toName) } : x,
+          ),
+        };
+      });
     },
-    [project, persist],
+    [persist],
   );
 
   const deleteFileByPath = useCallback(
     (path: string) => {
-      if (!project) return;
-      const f = project.files.find((x) => x.name === path);
-      if (!f) return;
-      const next: Project = { ...project, files: project.files.filter((x) => x.id !== f.id) };
-      persist(next);
-      if (activeFileId === f.id) setActiveFileId(next.files[0]?.id ?? null);
+      persist((current) => {
+        if (!current) return current;
+        const targetName = path.trim();
+        const f = current.files.find((x) => x.name === targetName);
+        if (!f) return current;
+        const next: Project = { ...current, files: current.files.filter((x) => x.id !== f.id) };
+        if (activeFileId === f.id) setActiveFileId(next.files[0]?.id ?? null);
+        return next;
+      });
     },
-    [project, persist, activeFileId],
+    [persist, activeFileId],
   );
 
   return {
