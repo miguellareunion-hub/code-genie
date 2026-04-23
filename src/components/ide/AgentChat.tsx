@@ -313,6 +313,47 @@ export function AgentChat({
     }
     if (builderResult.actions.length > 0) onSwitchToPreview?.();
 
+    // ---- Custom builder agents: run as additional refinement passes ----
+    let lastBuilderText = builderResult.text;
+    const customBuilders = agentsSettings.customAgents.filter(
+      (a) => a.enabled && a.role === "builder",
+    );
+    for (const ca of customBuilders) {
+      if (controller.signal.aborted) break;
+      setStatusLine(`Agent custom « ${ca.name} » en cours…`);
+      const caUserMsg: Msg = {
+        role: "user",
+        content:
+          `${prefix}${instruction}\n\n` +
+          `<context>\n${buildContext(getLatestFiles(), activeFile?.name)}\n</context>\n\n` +
+          `The Builder above produced the previous assistant message. Improve, refine or extend the project according to your role. Use <lov-write>/<lov-delete> to apply changes. If nothing needs to change, just briefly say so.`,
+      };
+      const caHistory: Msg[] = [
+        ...priorMessages,
+        builderUserMsg,
+        { role: "assistant", content: lastBuilderText },
+        caUserMsg,
+      ];
+      const caResult = await runAgentTurn(
+        "builder",
+        caHistory,
+        controller.signal,
+        ca.systemPrompt,
+        `${ca.emoji} ${ca.name}`,
+      );
+      if (!caResult) break;
+      const caFailures = applyActions(caResult.actions);
+      if (caFailures.length > 0) {
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: `⚠️ ${caFailures.join("\n")}` },
+        ]);
+        break;
+      }
+      if (caResult.actions.length > 0) onSwitchToPreview?.();
+      lastBuilderText = caResult.text;
+    }
+
     // Fixer loop (skipped entirely if disabled or maxFixIterations === 0)
     if (!agentsSettings.fixer.enabled || agentsSettings.maxFixIterations <= 0) {
       return true;
