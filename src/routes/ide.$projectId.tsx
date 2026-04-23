@@ -1,12 +1,20 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
-import { ArrowLeft, Code2, MessageSquare, TerminalSquare, Eye } from "lucide-react";
+import {
+  ArrowLeft,
+  Code2,
+  MessageSquare,
+  TerminalSquare,
+  Eye,
+  Settings as SettingsIcon,
+} from "lucide-react";
 import { useProject } from "@/hooks/useProject";
 import { FileExplorer } from "@/components/ide/FileExplorer";
 import { CodeEditor } from "@/components/ide/CodeEditor";
 import { PreviewPane } from "@/components/ide/PreviewPane";
 import { Terminal, type ConsoleEntry } from "@/components/ide/Terminal";
 import { AgentChat } from "@/components/ide/AgentChat";
+import { SettingsDialog } from "@/components/ide/SettingsDialog";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/ide/$projectId")({
@@ -41,6 +49,7 @@ function IdePage() {
   const [rightTab, setRightTab] = useState<RightTab>("preview");
   const [bottomOpen, setBottomOpen] = useState(true);
   const [console_, setConsole] = useState<ConsoleEntry[]>([]);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const pushConsole = useCallback((e: ConsoleEntry) => {
     setConsole((prev) => [...prev.slice(-499), e]);
@@ -161,8 +170,18 @@ function IdePage() {
             icon={<TerminalSquare className="h-3.5 w-3.5" />}
             label="Terminal"
           />
+          <button
+            onClick={() => setSettingsOpen(true)}
+            title="AI settings"
+            className="ml-1 flex items-center gap-1.5 rounded px-2.5 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <SettingsIcon className="h-3.5 w-3.5" />
+            Settings
+          </button>
         </div>
       </header>
+
+      <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
       <div className="flex min-h-0 flex-1">
         {/* File explorer */}
@@ -211,7 +230,11 @@ function IdePage() {
             <PreviewPane files={project.files} onConsole={pushConsole} />
           </div>
           <div className={cn("h-full", rightTab === "agent" ? "block" : "hidden")}>
-            <AgentChat files={project.files} activeFile={activeFile} />
+            <AgentChat
+              files={project.files}
+              activeFile={activeFile}
+              onOpenSettings={() => setSettingsOpen(true)}
+            />
           </div>
         </aside>
       </div>
