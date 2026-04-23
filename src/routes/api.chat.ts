@@ -8,6 +8,8 @@ type ChatBody = {
   model?: string;
   openaiApiKey?: string;
   role?: AgentRole;
+  /** Optional custom system prompt that overrides the default for this role. */
+  systemPromptOverride?: string;
 };
 
 const BASE_RULES = `# Environment constraints
@@ -89,7 +91,14 @@ export const Route = createFileRoute("/api/chat")({
       POST: async ({ request }: { request: Request }) => {
         try {
           const body = (await request.json()) as ChatBody;
-          const { messages, provider = "lovable", model, openaiApiKey, role = "builder" } = body;
+          const {
+            messages,
+            provider = "lovable",
+            model,
+            openaiApiKey,
+            role = "builder",
+            systemPromptOverride,
+          } = body;
 
           let url: string;
           let apiKey: string | undefined;
@@ -114,6 +123,11 @@ export const Route = createFileRoute("/api/chat")({
             }
           }
 
+          const systemPrompt =
+            systemPromptOverride && systemPromptOverride.trim().length > 0
+              ? systemPromptOverride
+              : getSystemPrompt(role);
+
           const upstream = await fetch(url, {
             method: "POST",
             headers: {
@@ -123,7 +137,7 @@ export const Route = createFileRoute("/api/chat")({
             body: JSON.stringify({
               model: chosenModel,
               stream: true,
-              messages: [{ role: "system", content: getSystemPrompt(role) }, ...messages],
+              messages: [{ role: "system", content: systemPrompt }, ...messages],
             }),
           });
 
