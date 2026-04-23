@@ -1,4 +1,6 @@
-import { compressToUTF16, decompressFromUTF16 } from "lz-string";
+import LZString from "lz-string";
+
+const { compressToUTF16, decompressFromUTF16 } = LZString;
 
 export type FileNode = {
   id: string;
