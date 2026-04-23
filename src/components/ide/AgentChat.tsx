@@ -547,9 +547,15 @@ export function AgentChat({
 
     try {
       const agentsSettings = loadAgentsSettings();
-      // ---------- Optional planning phase for big prompts ----------
+      const currentFilesNow = getLatestFiles();
+      const topIntent = detectIntent(trimmed, currentFilesNow.length > 0);
+
+      // ---------- Optional planning phase for big CREATION prompts only ----------
+      // Don't plan a targeted modification — that's what makes the agent
+      // rewrite the whole project step by step.
       let plan: PlanStep[] | null = null;
       if (
+        topIntent === "create" &&
         agentsSettings.planner.enabled &&
         shouldPlan(trimmed, agentsSettings.plannerMinChars)
       ) {
