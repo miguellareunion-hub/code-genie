@@ -28,6 +28,7 @@ function IdePage() {
   const navigate = useNavigate();
   const {
     project,
+    loaded,
     activeFileId,
     setActiveFileId,
     updateFile,
