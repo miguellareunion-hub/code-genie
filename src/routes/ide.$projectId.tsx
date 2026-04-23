@@ -7,6 +7,7 @@ import {
   TerminalSquare,
   Eye,
   Settings as SettingsIcon,
+  Bot,
 } from "lucide-react";
 import { useProject } from "@/hooks/useProject";
 import { FileExplorer } from "@/components/ide/FileExplorer";
@@ -15,6 +16,7 @@ import { PreviewPane } from "@/components/ide/PreviewPane";
 import { Terminal, type ConsoleEntry } from "@/components/ide/Terminal";
 import { AgentChat } from "@/components/ide/AgentChat";
 import { SettingsDialog } from "@/components/ide/SettingsDialog";
+import { AgentsDialog } from "@/components/ide/AgentsDialog";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/ide/$projectId")({
@@ -52,6 +54,7 @@ function IdePage() {
   const [bottomOpen, setBottomOpen] = useState(true);
   const [console_, setConsole] = useState<ConsoleEntry[]>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [agentsOpen, setAgentsOpen] = useState(false);
 
   const pushConsole = useCallback((e: ConsoleEntry) => {
     setConsole((prev) => [...prev.slice(-499), e]);
@@ -173,9 +176,17 @@ function IdePage() {
             label="Terminal"
           />
           <button
+            onClick={() => setAgentsOpen(true)}
+            title="Configurer les agents"
+            className="ml-1 flex items-center gap-1.5 rounded px-2.5 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <Bot className="h-3.5 w-3.5" />
+            Agents
+          </button>
+          <button
             onClick={() => setSettingsOpen(true)}
             title="AI settings"
-            className="ml-1 flex items-center gap-1.5 rounded px-2.5 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+            className="flex items-center gap-1.5 rounded px-2.5 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
           >
             <SettingsIcon className="h-3.5 w-3.5" />
             Settings
@@ -184,6 +195,7 @@ function IdePage() {
       </header>
 
       <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <AgentsDialog open={agentsOpen} onClose={() => setAgentsOpen(false)} />
 
       <div className="flex min-h-0 flex-1">
         {/* File explorer */}

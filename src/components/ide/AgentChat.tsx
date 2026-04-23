@@ -13,6 +13,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { FileNode } from "@/lib/projects";
 import { loadAISettings } from "@/lib/aiSettings";
+import { loadAgentsSettings } from "@/lib/agentSettings";
 import { parseAgentOutput, type AgentAction } from "@/lib/agentActions";
 import {
   clearRuntimeErrors,
@@ -25,9 +26,9 @@ type AgentRole = "builder" | "fixer" | "planner";
 type PlanStep = { title: string; instruction: string };
 
 /** Heuristic: should we run the planner before the builder? */
-function shouldPlan(prompt: string): boolean {
+function shouldPlan(prompt: string, minChars: number): boolean {
   const t = prompt.trim();
-  if (t.length > 280) return true;
+  if (t.length > minChars) return true;
   // Multi-line bulleted/numbered prompts
   const lines = t.split(/\r?\n/).filter((l) => l.trim().length > 0);
   if (lines.length >= 4) return true;
@@ -93,7 +94,6 @@ const SUGGESTIONS = [
   "Add a dark mode toggle",
 ];
 
-const MAX_FIX_ITERATIONS = 3;
 /** Delay after applying files so the iframe runs and reports any errors. */
 const RUNTIME_OBSERVE_MS = 1500;
 
@@ -147,7 +147,18 @@ export function AgentChat({
     };
 
     const settings = loadAISettings();
+    const agentsSettings = loadAgentsSettings();
+    const override = agentsSettings[role].systemPrompt.trim();
     const isLmStudio = settings.provider === "lmstudio";
+
+    const builtInLmStudioPrompt =
+      role === "fixer"
+        ? "You are the FIXER agent inside Lovable IDE. Re-emit broken files in full using <lov-write path=\"...\">...</lov-write> tags. Use <lov-delete path=\"...\" /> to remove files. Keep filenames at root. Output COMPLETE files."
+        : role === "planner"
+          ? "You are the PLANNER agent inside Lovable IDE. Split a complex user request into 2-6 small ordered build steps. Output ONLY JSON: { \"steps\": [ { \"title\": \"...\", \"instruction\": \"...\" } ] }. Step 1 is the base structure (HTML+CSS+JS skeleton). Each next step adds ONE feature on top. No prose, no markdown fences, no extra keys."
+          : "You are the BUILDER agent inside Lovable IDE. Generate browser-only projects (HTML/CSS/JS). Use <lov-write path=\"...\">FULL CONTENT</lov-write> to create or overwrite files, <lov-delete path=\"...\" /> to delete. Keep filenames at root. Always output COMPLETE files. When the <context> already lists files, ADD or PATCH only what the current step needs — do not recreate everything from scratch.";
+
+    const lmStudioSystemPrompt = override.length > 0 ? override : builtInLmStudioPrompt;
 
     const resp = isLmStudio
       ? await fetch(`${settings.lmstudioBaseUrl.replace(/\/$/, "")}/chat/completions`, {
@@ -157,15 +168,7 @@ export function AgentChat({
             model: settings.lmstudioModel,
             stream: true,
             messages: [
-              {
-                role: "system",
-                content:
-                  role === "fixer"
-                    ? "You are the FIXER agent inside Lovable IDE. Re-emit broken files in full using <lov-write path=\"...\">...</lov-write> tags. Use <lov-delete path=\"...\" /> to remove files. Keep filenames at root. Output COMPLETE files."
-                    : role === "planner"
-                      ? "You are the PLANNER agent inside Lovable IDE. Split a complex user request into 2-6 small ordered build steps. Output ONLY JSON: { \"steps\": [ { \"title\": \"...\", \"instruction\": \"...\" } ] }. Step 1 is the base structure (HTML+CSS+JS skeleton). Each next step adds ONE feature on top. No prose, no markdown fences, no extra keys."
-                      : "You are the BUILDER agent inside Lovable IDE. Generate browser-only projects (HTML/CSS/JS). Use <lov-write path=\"...\">FULL CONTENT</lov-write> to create or overwrite files, <lov-delete path=\"...\" /> to delete. Keep filenames at root. Always output COMPLETE files. When the <context> already lists files, ADD or PATCH only what the current step needs — do not recreate everything from scratch.",
-              },
+              { role: "system", content: lmStudioSystemPrompt },
               ...apiMessages.map((m) => ({ role: m.role, content: m.content })),
             ],
           }),
@@ -181,6 +184,7 @@ export function AgentChat({
             model:
               settings.provider === "openai" ? settings.openaiModel : settings.lovableModel,
             openaiApiKey: settings.provider === "openai" ? settings.openaiApiKey : undefined,
+            systemPromptOverride: override.length > 0 ? override : undefined,
           }),
           signal,
         });
@@ -265,6 +269,19 @@ export function AgentChat({
     controller: AbortController,
     stepLabel?: string,
   ): Promise<boolean> => {
+    const agentsSettings = loadAgentsSettings();
+    if (!agentsSettings.builder.enabled) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content:
+            "⚠️ Le Builder est désactivé. Active-le dans **Agents** pour générer du code.",
+        },
+      ]);
+      return false;
+    }
+
     clearRuntimeErrors();
     const prefix = stepLabel ? `${stepLabel}\n\n` : "";
     const builderUserMsg: Msg = {
@@ -284,9 +301,13 @@ export function AgentChat({
     }
     if (builderResult.actions.length > 0) onSwitchToPreview?.();
 
-    // Fixer loop
+    // Fixer loop (skipped entirely if disabled or maxFixIterations === 0)
+    if (!agentsSettings.fixer.enabled || agentsSettings.maxFixIterations <= 0) {
+      return true;
+    }
+
     let lastAssistantText = builderResult.text;
-    for (let iter = 1; iter <= MAX_FIX_ITERATIONS; iter++) {
+    for (let iter = 1; iter <= agentsSettings.maxFixIterations; iter++) {
       if (controller.signal.aborted) break;
       setStatusLine(`Running project & checking for errors (pass ${iter})…`);
       const checkpoint = Date.now() - 50;
@@ -341,9 +362,13 @@ export function AgentChat({
     abortRef.current = controller;
 
     try {
+      const agentsSettings = loadAgentsSettings();
       // ---------- Optional planning phase for big prompts ----------
       let plan: PlanStep[] | null = null;
-      if (shouldPlan(trimmed)) {
+      if (
+        agentsSettings.planner.enabled &&
+        shouldPlan(trimmed, agentsSettings.plannerMinChars)
+      ) {
         setStatusLine("Planner agent is breaking your request into steps…");
         const plannerHistory: Msg[] = [
           {
@@ -441,8 +466,8 @@ export function AgentChat({
                 <Bot className="h-4 w-4 text-primary" /> Hi! I'm your multi-agent coding system.
               </p>
               I'll <strong>build</strong> the project, <strong>run it</strong> in the preview,
-              and a <strong>fixer agent</strong> will automatically repair any runtime errors —
-              up to {MAX_FIX_ITERATIONS} passes.
+              and a <strong>fixer agent</strong> will automatically repair any runtime errors.
+              Customize each agent in the <strong>Agents</strong> menu (top bar).
             </div>
             <div className="flex flex-wrap gap-2">
               {SUGGESTIONS.map((s) => (
