@@ -6,6 +6,18 @@ export type AgentConfig = {
   systemPrompt: string;
 };
 
+/** A user-defined extra agent. Runs as an additional refinement pass. */
+export type CustomAgent = {
+  id: string;
+  name: string;
+  emoji: string;
+  description: string;
+  /** Which built-in role's behaviour it mimics (which point of the pipeline it hooks into). */
+  role: AgentRole;
+  enabled: boolean;
+  systemPrompt: string;
+};
+
 export type AgentsSettings = {
   builder: AgentConfig;
   fixer: AgentConfig;
@@ -14,6 +26,8 @@ export type AgentsSettings = {
   maxFixIterations: number;
   /** Min prompt length (chars) to trigger the planner. */
   plannerMinChars: number;
+  /** User-created custom agents. */
+  customAgents: CustomAgent[];
 };
 
 const STORAGE_KEY = "lovable-ide:agents-settings";
@@ -43,6 +57,7 @@ export const DEFAULT_AGENTS_SETTINGS: AgentsSettings = {
   planner: { enabled: true, systemPrompt: "" },
   maxFixIterations: 3,
   plannerMinChars: 280,
+  customAgents: [],
 };
 
 export function loadAgentsSettings(): AgentsSettings {
@@ -57,6 +72,7 @@ export function loadAgentsSettings(): AgentsSettings {
       builder: { ...DEFAULT_AGENTS_SETTINGS.builder, ...(parsed.builder ?? {}) },
       fixer: { ...DEFAULT_AGENTS_SETTINGS.fixer, ...(parsed.fixer ?? {}) },
       planner: { ...DEFAULT_AGENTS_SETTINGS.planner, ...(parsed.planner ?? {}) },
+      customAgents: Array.isArray(parsed.customAgents) ? parsed.customAgents : [],
     };
   } catch {
     return DEFAULT_AGENTS_SETTINGS;
@@ -66,6 +82,22 @@ export function loadAgentsSettings(): AgentsSettings {
 export function saveAgentsSettings(s: AgentsSettings) {
   if (typeof window === "undefined") return;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+}
+
+export function makeCustomAgent(partial?: Partial<CustomAgent>): CustomAgent {
+  return {
+    id:
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `agent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    name: "Nouvel agent",
+    emoji: "🤖",
+    description: "Décris ici le rôle de cet agent.",
+    role: "builder",
+    enabled: true,
+    systemPrompt: "",
+    ...partial,
+  };
 }
 
 export const AGENT_META: Record<
@@ -92,4 +124,10 @@ export const AGENT_META: Record<
       "Découpe les gros prompts en 2 à 6 étapes que le Builder exécute une par une.",
     defaultPrompt: DEFAULT_PLANNER_PROMPT,
   },
+};
+
+export const ROLE_LABEL: Record<AgentRole, string> = {
+  builder: "🏗️ Passe builder (refine après le Builder)",
+  fixer: "🔧 Passe fixer (renforce la correction d'erreurs)",
+  planner: "📋 Pré-planification (en plus du Planner)",
 };

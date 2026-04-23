@@ -128,12 +128,21 @@ export function AgentChat({
     role: AgentRole,
     apiMessages: Msg[],
     signal: AbortSignal,
+    /** Optional explicit prompt override (used by custom agents). */
+    explicitOverride?: string,
+    /** Optional label shown in chat (e.g. custom agent name). */
+    displayLabel?: string,
   ): Promise<{ text: string; actions: AgentAction[] } | null> => {
     let assistantSoFar = "";
     setMessages((prev) => [
       ...prev,
-      { role: "assistant", content: "", agentRole: role },
+      {
+        role: "assistant",
+        content: displayLabel ? `*${displayLabel}*\n\n` : "",
+        agentRole: role,
+      },
     ]);
+    if (displayLabel) assistantSoFar = `*${displayLabel}*\n\n`;
 
     const upsert = (chunk: string) => {
       assistantSoFar += chunk;
@@ -148,7 +157,10 @@ export function AgentChat({
 
     const settings = loadAISettings();
     const agentsSettings = loadAgentsSettings();
-    const override = agentsSettings[role].systemPrompt.trim();
+    const override =
+      explicitOverride !== undefined
+        ? explicitOverride.trim()
+        : agentsSettings[role].systemPrompt.trim();
     const isLmStudio = settings.provider === "lmstudio";
 
     const builtInLmStudioPrompt =
@@ -301,6 +313,47 @@ export function AgentChat({
     }
     if (builderResult.actions.length > 0) onSwitchToPreview?.();
 
+    // ---- Custom builder agents: run as additional refinement passes ----
+    let lastBuilderText = builderResult.text;
+    const customBuilders = agentsSettings.customAgents.filter(
+      (a) => a.enabled && a.role === "builder",
+    );
+    for (const ca of customBuilders) {
+      if (controller.signal.aborted) break;
+      setStatusLine(`Agent custom « ${ca.name} » en cours…`);
+      const caUserMsg: Msg = {
+        role: "user",
+        content:
+          `${prefix}${instruction}\n\n` +
+          `<context>\n${buildContext(getLatestFiles(), activeFile?.name)}\n</context>\n\n` +
+          `The Builder above produced the previous assistant message. Improve, refine or extend the project according to your role. Use <lov-write>/<lov-delete> to apply changes. If nothing needs to change, just briefly say so.`,
+      };
+      const caHistory: Msg[] = [
+        ...priorMessages,
+        builderUserMsg,
+        { role: "assistant", content: lastBuilderText },
+        caUserMsg,
+      ];
+      const caResult = await runAgentTurn(
+        "builder",
+        caHistory,
+        controller.signal,
+        ca.systemPrompt,
+        `${ca.emoji} ${ca.name}`,
+      );
+      if (!caResult) break;
+      const caFailures = applyActions(caResult.actions);
+      if (caFailures.length > 0) {
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: `⚠️ ${caFailures.join("\n")}` },
+        ]);
+        break;
+      }
+      if (caResult.actions.length > 0) onSwitchToPreview?.();
+      lastBuilderText = caResult.text;
+    }
+
     // Fixer loop (skipped entirely if disabled or maxFixIterations === 0)
     if (!agentsSettings.fixer.enabled || agentsSettings.maxFixIterations <= 0) {
       return true;
@@ -343,6 +396,38 @@ export function AgentChat({
         break;
       }
       lastAssistantText = fixerResult.text;
+
+      // ---- Custom fixer agents: extra repair passes ----
+      const customFixers = agentsSettings.customAgents.filter(
+        (a) => a.enabled && a.role === "fixer",
+      );
+      for (const ca of customFixers) {
+        if (controller.signal.aborted) break;
+        setStatusLine(`Agent custom « ${ca.name} » vérifie la correction…`);
+        const caHistory: Msg[] = [
+          { role: "assistant", content: lastAssistantText },
+          {
+            role: "user",
+            content:
+              `Errors that were observed:\n${errorBlock}\n\n` +
+              `<context>\n${buildContext(getLatestFiles())}\n</context>\n\n` +
+              `Review the fix above. If anything is still wrong or could be improved, re-emit corrected file(s) with <lov-write>. If the fix is good, just say so briefly.`,
+          },
+        ];
+        const caResult = await runAgentTurn(
+          "fixer",
+          caHistory,
+          controller.signal,
+          ca.systemPrompt,
+          `${ca.emoji} ${ca.name}`,
+        );
+        if (!caResult) break;
+        const caFailures = applyActions(caResult.actions);
+        if (caFailures.length > 0) break;
+        if (caResult.actions.length > 0) onSwitchToPreview?.();
+        lastAssistantText = caResult.text;
+      }
+
       clearRuntimeErrors();
     }
     return true;
