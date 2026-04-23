@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as IdeProjectIdRouteImport } from './routes/ide.$projectId'
+import { Route as ApiWebSearchRouteImport } from './routes/api.web-search'
 import { Route as ApiChatRouteImport } from './routes/api.chat'
 
 const IndexRoute = IndexRouteImport.update({
@@ -23,6 +24,11 @@ const IdeProjectIdRoute = IdeProjectIdRouteImport.update({
   path: '/ide/$projectId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiWebSearchRoute = ApiWebSearchRouteImport.update({
+  id: '/api/web-search',
+  path: '/api/web-search',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiChatRoute = ApiChatRouteImport.update({
   id: '/api/chat',
   path: '/api/chat',
@@ -32,30 +38,34 @@ const ApiChatRoute = ApiChatRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/api/chat': typeof ApiChatRoute
+  '/api/web-search': typeof ApiWebSearchRoute
   '/ide/$projectId': typeof IdeProjectIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/api/chat': typeof ApiChatRoute
+  '/api/web-search': typeof ApiWebSearchRoute
   '/ide/$projectId': typeof IdeProjectIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/api/chat': typeof ApiChatRoute
+  '/api/web-search': typeof ApiWebSearchRoute
   '/ide/$projectId': typeof IdeProjectIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/chat' | '/ide/$projectId'
+  fullPaths: '/' | '/api/chat' | '/api/web-search' | '/ide/$projectId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/chat' | '/ide/$projectId'
-  id: '__root__' | '/' | '/api/chat' | '/ide/$projectId'
+  to: '/' | '/api/chat' | '/api/web-search' | '/ide/$projectId'
+  id: '__root__' | '/' | '/api/chat' | '/api/web-search' | '/ide/$projectId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ApiChatRoute: typeof ApiChatRoute
+  ApiWebSearchRoute: typeof ApiWebSearchRoute
   IdeProjectIdRoute: typeof IdeProjectIdRoute
 }
 
@@ -75,6 +85,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IdeProjectIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/web-search': {
+      id: '/api/web-search'
+      path: '/api/web-search'
+      fullPath: '/api/web-search'
+      preLoaderRoute: typeof ApiWebSearchRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/chat': {
       id: '/api/chat'
       path: '/api/chat'
@@ -88,8 +105,18 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ApiChatRoute: ApiChatRoute,
+  ApiWebSearchRoute: ApiWebSearchRoute,
   IdeProjectIdRoute: IdeProjectIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { createStart } from '@tanstack/react-start'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+  }
+}
