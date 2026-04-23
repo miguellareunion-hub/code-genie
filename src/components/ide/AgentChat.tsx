@@ -172,10 +172,17 @@ export function AgentChat({
 
     const lmStudioSystemPrompt = override.length > 0 ? override : builtInLmStudioPrompt;
 
+    const lmStudioHeaders: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (isLmStudio && settings.lmstudioApiKey.trim()) {
+      lmStudioHeaders["Authorization"] = `Bearer ${settings.lmstudioApiKey.trim()}`;
+    }
+
     const resp = isLmStudio
       ? await fetch(`${settings.lmstudioBaseUrl.replace(/\/$/, "")}/chat/completions`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: lmStudioHeaders,
           body: JSON.stringify({
             model: settings.lmstudioModel,
             stream: true,
