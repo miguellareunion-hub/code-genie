@@ -9,6 +9,7 @@ import {
   Settings as SettingsIcon,
   Wand2,
   ShieldCheck,
+  Wrench,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { FileNode } from "@/lib/projects";
@@ -22,6 +23,7 @@ import {
 } from "@/lib/runtimeErrors";
 import { validateProject, formatIssuesForFixer } from "@/lib/projectValidator";
 import { detectIntent, MODIFY_GUARD_PROMPT } from "@/lib/intentDetector";
+import { TOOL_DEFS, executeTool, type ToolCall, type ToolResult } from "@/lib/agentTools";
 
 type AgentRole = "builder" | "fixer" | "planner";
 
@@ -74,9 +76,12 @@ type Msg = {
   role: "user" | "assistant";
   content: string;
   agentRole?: AgentRole;
+  /** Native-tools mode: list of tool calls executed during this assistant turn. */
+  toolEvents?: { label: string; ok: boolean }[];
 };
 
 interface Props {
+  projectId: string;
   files: FileNode[];
   activeFile: FileNode | null;
   onOpenSettings?: () => void;
@@ -100,6 +105,7 @@ const SUGGESTIONS = [
 const RUNTIME_OBSERVE_MS = 1500;
 
 export function AgentChat({
+  projectId,
   files,
   activeFile,
   onOpenSettings,
