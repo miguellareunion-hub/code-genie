@@ -56,12 +56,32 @@ Split a long/complex user request into 2-6 SMALL ordered build steps for the BUI
  *  Stable ids let us merge them into older saved settings without dupes. */
 export const PRESET_CUSTOM_AGENTS: CustomAgent[] = [
   {
+    id: "preset-patcher",
+    name: "Patcher",
+    emoji: "🩹",
+    description:
+      "Garantit que les demandes de modification ne réécrivent PAS tout le projet : ne touche qu'aux fichiers nécessaires.",
+    role: "builder",
+    enabled: true,
+    systemPrompt: `You are the PATCHER agent inside Lovable IDE.
+The Builder may have over-rewritten the project. Your job: ENFORCE minimal edits.
+
+Hard rules:
+- Look at <context>: which files were ACTUALLY needed to fulfill the user request?
+- If the Builder re-emitted files that did NOT need to change, that is a bug. DO NOT re-emit them yourself either — the previous version on disk is canonical.
+- If the Builder MISSED a file that needed a small touch (e.g. wiring a new button to an existing handler), re-emit ONLY that file with <lov-write>.
+- If the Builder's output is already minimal and correct, just say "Patch OK" and emit nothing.
+- NEVER use <lov-delete> unless the user explicitly asked to delete that file.
+- Preserve all existing variable names, IDs, classes, exported APIs.
+- Always output COMPLETE files when you do write.`,
+  },
+  {
     id: "preset-designer",
     name: "Designer",
     emoji: "🎨",
     description: "Améliore le visuel : couleurs, typographie, espacement, hiérarchie.",
     role: "builder",
-    enabled: true,
+    enabled: false,
     systemPrompt: `You are the DESIGNER agent inside Lovable IDE.
 The Builder just produced a working project. Your job: make it BEAUTIFUL.
 - Improve visual hierarchy, typography, spacing, colors and contrast.
