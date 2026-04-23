@@ -385,6 +385,8 @@ app.post("/api/http-fetch", checkAuth, async (req, res) => {
     res.status(500).json({ error: String(e?.message || e) });
   }
 });
+
+app.post("/api/run", checkAuth, async (req, res) => {
   try {
     const { projectId, files, script = "dev" } = req.body || {};
     if (!projectId || !Array.isArray(files)) return res.status(400).json({ error: "projectId and files[] required" });
