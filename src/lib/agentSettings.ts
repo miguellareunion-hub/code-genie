@@ -149,7 +149,7 @@ export const DEFAULT_AGENTS_SETTINGS: AgentsSettings = {
   builder: { enabled: true, systemPrompt: "" },
   fixer: { enabled: true, systemPrompt: "" },
   planner: { enabled: true, systemPrompt: "" },
-  maxFixIterations: 3,
+  maxFixIterations: 5,
   plannerMinChars: 280,
   customAgents: PRESET_CUSTOM_AGENTS,
 };
