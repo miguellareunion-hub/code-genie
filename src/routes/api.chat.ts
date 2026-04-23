@@ -44,9 +44,12 @@ To delete a file:
 4. **Node entry point clarity.** For Node projects, the file mentioned in \`package.json\` "main" or in \`scripts.start\` MUST exist (e.g. if \`"start": "node server.js"\`, write \`server.js\`).
 5. **Env vars and secrets.** For API keys, read from \`process.env.XXX\` and put a placeholder \`.env.example\` file. Never hardcode secrets.
 
-# When the project already has files
+# When the project already has files (MODIFICATION mode)
 - The <context> block lists every existing file. You MUST work with that exact list.
-- To replace a project entirely, DELETE every existing file you no longer need with <lov-delete path="..." /> and then <lov-write> the new files.
+- **DEFAULT BEHAVIOR**: when files already exist, the user is asking for an INCREMENTAL CHANGE. Re-emit ONLY the file(s) that need to change. NEVER re-emit unchanged files.
+- **Forbidden**: rewriting the entire project just because the user reported a small bug ("je ne peux pas activer le bot", "le bouton ne marche pas", etc.). These are TARGETED FIXES — touch 1-3 files MAX.
+- **Forbidden**: deleting files the user did not explicitly ask to delete.
+- To replace a project entirely, the user must say so explicitly ("recommence à zéro", "nouveau projet", "from scratch"). Only then may you DELETE every existing file with <lov-delete> and re-emit a fresh set.
 - Never leave behind unrelated leftover files from a previous app.
 - Every file referenced (HTML <script>, JS imports, CSS @import) MUST exist after your changes — either already in <context> or written in this response.`;
 
