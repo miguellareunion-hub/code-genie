@@ -289,9 +289,28 @@ export function AgentChat({
     const failures: string[] = [];
     for (const a of actions) {
       try {
-        if (a.type === "write") onWriteFile(a.path, a.content);
-        else if (a.type === "rename") onRenameFile(a.from, a.to);
-        else if (a.type === "delete") onDeleteFile(a.path);
+        if (a.type === "write") {
+          onWriteFile(a.path, a.content);
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(
+              new CustomEvent("lovable:agent-file-write", { detail: { path: a.path } }),
+            );
+          }
+        } else if (a.type === "rename") {
+          onRenameFile(a.from, a.to);
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(
+              new CustomEvent("lovable:agent-file-write", { detail: { path: `${a.from} → ${a.to}` } }),
+            );
+          }
+        } else if (a.type === "delete") {
+          onDeleteFile(a.path);
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(
+              new CustomEvent("lovable:agent-file-write", { detail: { path: `🗑 ${a.path}` } }),
+            );
+          }
+        }
       } catch (e) {
         console.error("Failed to apply agent action", a, e);
         const message = e instanceof Error ? e.message : "Unknown write error";
