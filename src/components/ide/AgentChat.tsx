@@ -103,6 +103,29 @@ const SUGGESTIONS = [
 
 /** Delay after applying files so the iframe runs and reports any errors. */
 const RUNTIME_OBSERVE_MS = 1500;
+const REPEATED_TOOL_ATTEMPT_LIMIT = 3;
+const REPEATED_FAILURE_LIMIT = 2;
+const NO_PROGRESS_TOOL_STEPS_LIMIT = 8;
+
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+  const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) =>
+    a.localeCompare(b),
+  );
+  return `{${entries
+    .map(([key, val]) => `${JSON.stringify(key)}:${stableStringify(val)}`)
+    .join(",")}}`;
+}
+
+function extractToolErrorSummary(content: string): string {
+  try {
+    const parsed = JSON.parse(content) as { error?: string; stderr?: string; body?: string };
+    return parsed.error || parsed.stderr || parsed.body || content;
+  } catch {
+    return content;
+  }
+}
 
 export function AgentChat({
   projectId,
@@ -426,7 +449,10 @@ Workflow:
 - For Node projects, ALWAYS include a package.json with proper scripts and dependencies.
 - For browser projects, use index.html + style.css + script.js at root.
 - One tool call at a time is fine; batching is also OK.
-- If a tool returns an error, READ it, then either fix and retry, or use \`finish\` to explain what blocked you.`;
+- If a tool returns an error, READ it, then either fix and retry, or use \`finish\` to explain what blocked you.
+- Never repeat the EXACT same failing tool call more than once unless you changed a relevant file first.
+- If \`exec_shell\` fails twice with the same error, STOP retrying and call \`finish\` with the blocker.
+- Do not reuse absolute machine paths copied from stderr/stdout as new commands unless the user explicitly asked for that exact path.`;
 
     // Conversation history we send to the model. Tool messages get appended
     // as we go.
@@ -471,6 +497,10 @@ Workflow:
     };
 
     const maxIters = Math.max(1, agentsSettings.maxToolIterations || 24);
+    const toolAttemptCounts = new Map<string, number>();
+    const toolFailureCounts = new Map<string, number>();
+    let nonProgressSteps = 0;
+
     for (let iter = 0; iter < maxIters; iter++) {
       if (controller.signal.aborted) return false;
       setStatusLine(`Agent réfléchit… (étape ${iter + 1}/${maxIters})`);
@@ -579,13 +609,35 @@ Workflow:
           name: tc.function.name,
           args: parsedArgs,
         };
+        const signature = `${call.name}:${stableStringify(call.args)}`;
+        toolAttemptCounts.set(signature, (toolAttemptCounts.get(signature) ?? 0) + 1);
         setStatusLine(`🔧 ${call.name}…`);
         const result: ToolResult = await executeTool(call, ctx);
         toolEvents.push({ label: result.label, ok: result.ok });
         updateBubble();
 
+        if (!result.ok) {
+          const failureKey = `${signature}::${result.content}`;
+          toolFailureCounts.set(failureKey, (toolFailureCounts.get(failureKey) ?? 0) + 1);
+          const failureCount = toolFailureCounts.get(failureKey) ?? 0;
+          const attemptCount = toolAttemptCounts.get(signature) ?? 0;
+          const blocker = extractToolErrorSummary(result.content).slice(0, 240);
+
+          if (failureCount >= REPEATED_FAILURE_LIMIT || attemptCount >= REPEATED_TOOL_ATTEMPT_LIMIT) {
+            visibleContent += `\n\n⚠️ Arrêt automatique : l’agent répète \`${call.name}\` sans progrès. Blocage détecté : ${blocker}`;
+            updateBubble();
+            setStatusLine("");
+            return true;
+          }
+        }
+
         if (["write_file", "rename_file", "delete_file"].includes(call.name)) {
           appliedFileChange = true;
+          nonProgressSteps = 0;
+          toolAttemptCounts.clear();
+          toolFailureCounts.clear();
+        } else {
+          nonProgressSteps += 1;
         }
 
         history.push({
@@ -596,6 +648,14 @@ Workflow:
         });
 
         if (call.name === "finish") sawFinish = true;
+      }
+
+      if (!appliedFileChange && nonProgressSteps >= NO_PROGRESS_TOOL_STEPS_LIMIT) {
+        visibleContent +=
+          "\n\n⚠️ Arrêt automatique : trop d’actions sans modification de fichier. L’agent doit conclure ou changer de stratégie.";
+        updateBubble();
+        setStatusLine("");
+        return true;
       }
 
       if (appliedFileChange) onSwitchToPreview?.();
