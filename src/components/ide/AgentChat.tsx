@@ -107,6 +107,10 @@ const REPEATED_TOOL_ATTEMPT_LIMIT = 3;
 const REPEATED_FAILURE_LIMIT = 2;
 const NO_PROGRESS_TOOL_STEPS_LIMIT = 8;
 
+function supportsReliableNativeTools(provider: "lovable" | "openai" | "lmstudio"): boolean {
+  return provider !== "lmstudio";
+}
+
 function stableStringify(value: unknown): string {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map((item) => stableStringify(item)).join(",")}]`;
@@ -903,11 +907,12 @@ When a tool returns an error you MUST react like a senior engineer, not by retry
 
     try {
       const agentsSettings = loadAgentsSettings();
+      const aiSettings = loadAISettings();
       const currentFilesNow = getLatestFiles();
       const topIntent = detectIntent(trimmed, currentFilesNow.length > 0);
 
       // -------- Native tool-calling mode (agents = same caps as Lovable IDE) --------
-      if (agentsSettings.useNativeTools) {
+      if (agentsSettings.useNativeTools && supportsReliableNativeTools(aiSettings.provider)) {
         await runAgentToolLoop(trimmed, controller);
         setStatusLine("");
         if (typeof window !== "undefined") {
