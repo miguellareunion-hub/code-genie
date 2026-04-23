@@ -1,10 +1,12 @@
-export type AIProvider = "lovable" | "openai";
+export type AIProvider = "lovable" | "openai" | "lmstudio";
 
 export type AISettings = {
   provider: AIProvider;
   openaiApiKey: string;
   openaiModel: string;
   lovableModel: string;
+  lmstudioBaseUrl: string;
+  lmstudioModel: string;
 };
 
 const STORAGE_KEY = "lovable-ide:ai-settings";
@@ -14,6 +16,8 @@ export const DEFAULT_SETTINGS: AISettings = {
   openaiApiKey: "",
   openaiModel: "gpt-4o-mini",
   lovableModel: "google/gemini-3-flash-preview",
+  lmstudioBaseUrl: "http://localhost:1234/v1",
+  lmstudioModel: "local-model",
 };
 
 export const OPENAI_MODELS = [

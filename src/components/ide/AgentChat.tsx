@@ -102,19 +102,41 @@ export function AgentChat({
     };
 
     const settings = loadAISettings();
-    const resp = await fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        role,
-        messages: apiMessages.map((m) => ({ role: m.role, content: m.content })),
-        provider: settings.provider,
-        model:
-          settings.provider === "openai" ? settings.openaiModel : settings.lovableModel,
-        openaiApiKey: settings.provider === "openai" ? settings.openaiApiKey : undefined,
-      }),
-      signal,
-    });
+    const isLmStudio = settings.provider === "lmstudio";
+
+    const resp = isLmStudio
+      ? await fetch(`${settings.lmstudioBaseUrl.replace(/\/$/, "")}/chat/completions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: settings.lmstudioModel,
+            stream: true,
+            messages: [
+              {
+                role: "system",
+                content:
+                  role === "fixer"
+                    ? "You are the FIXER agent inside Lovable IDE. Re-emit broken files in full using <lov-write path=\"...\">...</lov-write> tags. Use <lov-delete path=\"...\" /> to remove files. Keep filenames at root. Output COMPLETE files."
+                    : "You are the BUILDER agent inside Lovable IDE. Generate browser-only projects (HTML/CSS/JS). Use <lov-write path=\"...\">FULL CONTENT</lov-write> to create or overwrite files, <lov-delete path=\"...\" /> to delete. Keep filenames at root. Always output COMPLETE files. Delete leftover files from previous projects.",
+              },
+              ...apiMessages.map((m) => ({ role: m.role, content: m.content })),
+            ],
+          }),
+          signal,
+        })
+      : await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            role,
+            messages: apiMessages.map((m) => ({ role: m.role, content: m.content })),
+            provider: settings.provider,
+            model:
+              settings.provider === "openai" ? settings.openaiModel : settings.lovableModel,
+            openaiApiKey: settings.provider === "openai" ? settings.openaiApiKey : undefined,
+          }),
+          signal,
+        });
 
     if (!resp.ok || !resp.body) {
       let msg = "Failed to reach the AI agent.";

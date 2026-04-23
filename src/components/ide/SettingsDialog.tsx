@@ -63,18 +63,24 @@ export function SettingsDialog({ open, onClose, onSaved }: Props) {
             <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-muted-foreground">
               Provider
             </label>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               <ProviderCard
                 active={settings.provider === "lovable"}
                 onClick={() => update("provider", "lovable" as AIProvider)}
                 title="Lovable AI"
-                desc="Pre-configured gateway. Free credits included."
+                desc="Gateway préconfiguré. Crédits gratuits inclus."
               />
               <ProviderCard
                 active={settings.provider === "openai"}
                 onClick={() => update("provider", "openai" as AIProvider)}
                 title="OpenAI"
-                desc="Use your own OpenAI API key."
+                desc="Utilise ta propre clé API OpenAI."
+              />
+              <ProviderCard
+                active={settings.provider === "lmstudio"}
+                onClick={() => update("provider", "lmstudio" as AIProvider)}
+                title="LM Studio"
+                desc="Modèle local sur ta machine."
               />
             </div>
           </div>
@@ -164,6 +170,48 @@ export function SettingsDialog({ open, onClose, onSaved }: Props) {
               </div>
             </div>
           )}
+
+          {/* LM Studio config */}
+          {settings.provider === "lmstudio" && (
+            <div className="space-y-3 rounded-md border border-border bg-[var(--sidebar-bg)] p-3">
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-foreground">
+                  URL du serveur LM Studio
+                </label>
+                <input
+                  type="text"
+                  value={settings.lmstudioBaseUrl}
+                  onChange={(e) => update("lmstudioBaseUrl", e.target.value)}
+                  placeholder="http://localhost:1234/v1"
+                  className="w-full rounded-md border border-border bg-input px-2 py-2 text-sm outline-none focus:border-primary"
+                  spellCheck={false}
+                />
+                <p className="mt-1.5 text-[11px] text-muted-foreground">
+                  Lance le serveur dans LM Studio (onglet « Local Server ») et active CORS.
+                </p>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-foreground">
+                  Nom du modèle
+                </label>
+                <input
+                  type="text"
+                  value={settings.lmstudioModel}
+                  onChange={(e) => update("lmstudioModel", e.target.value)}
+                  placeholder="ex: qwen2.5-coder-7b-instruct"
+                  className="w-full rounded-md border border-border bg-input px-2 py-2 text-sm outline-none focus:border-primary"
+                  spellCheck={false}
+                />
+                <p className="mt-1.5 text-[11px] text-muted-foreground">
+                  L'identifiant exact du modèle chargé dans LM Studio.
+                </p>
+              </div>
+              <div className="rounded border border-border bg-muted p-2 text-[11px] text-muted-foreground">
+                ⚠️ L'appel se fait directement depuis ton navigateur vers LM Studio.
+                Ça ne marchera que si LM Studio tourne sur la même machine que celle où tu ouvres l'aperçu, et si CORS est activé dans LM Studio.
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="flex items-center justify-end gap-2 border-t border-border px-4 py-3">
@@ -176,7 +224,9 @@ export function SettingsDialog({ open, onClose, onSaved }: Props) {
           <button
             onClick={handleSave}
             disabled={
-              settings.provider === "openai" && !settings.openaiApiKey.trim()
+              (settings.provider === "openai" && !settings.openaiApiKey.trim()) ||
+              (settings.provider === "lmstudio" &&
+                (!settings.lmstudioBaseUrl.trim() || !settings.lmstudioModel.trim()))
             }
             className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
           >
