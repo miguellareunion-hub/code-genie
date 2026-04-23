@@ -10,6 +10,7 @@ import {
 } from "@/lib/projects";
 
 export const Route = createFileRoute("/")({
+  ssr: false,
   head: () => ({
     meta: [
       { title: "Lovable IDE — Build, edit, preview in your browser" },

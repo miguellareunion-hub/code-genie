@@ -10,6 +10,7 @@ import { AgentChat } from "@/components/ide/AgentChat";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/ide/$projectId")({
+  ssr: false,
   head: () => ({
     meta: [
       { title: "Editor — Lovable IDE" },
@@ -17,16 +18,6 @@ export const Route = createFileRoute("/ide/$projectId")({
     ],
   }),
   component: IdePage,
-  notFoundComponent: () => (
-    <div className="flex min-h-screen items-center justify-center text-foreground">
-      <div className="text-center">
-        <h1 className="text-2xl font-semibold">Project not found</h1>
-        <Link to="/" className="mt-4 inline-block text-primary hover:underline">
-          ← Back to projects
-        </Link>
-      </div>
-    </div>
-  ),
 });
 
 type RightTab = "preview" | "agent";
@@ -37,6 +28,7 @@ function IdePage() {
   const navigate = useNavigate();
   const {
     project,
+    loaded,
     activeFileId,
     setActiveFileId,
     updateFile,
@@ -105,10 +97,26 @@ function IdePage() {
     [project, setActiveFileId],
   );
 
-  if (!project) {
+  if (!loaded) {
     return (
       <div className="flex min-h-screen items-center justify-center text-foreground">
         <p className="text-muted-foreground">Loading project…</p>
+      </div>
+    );
+  }
+
+  if (!project) {
+    return (
+      <div className="flex min-h-screen items-center justify-center text-foreground">
+        <div className="text-center">
+          <h1 className="text-2xl font-semibold">Project not found</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            This project doesn't exist on this device. Projects are stored locally in your browser.
+          </p>
+          <Link to="/" className="mt-4 inline-block text-primary hover:underline">
+            ← Back to projects
+          </Link>
+        </div>
       </div>
     );
   }
