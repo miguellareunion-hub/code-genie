@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { RefreshCw, ExternalLink } from "lucide-react";
 import { buildPreviewDoc, type FileNode } from "@/lib/projects";
+import { pushRuntimeError } from "@/lib/runtimeErrors";
 
 interface Props {
   files: FileNode[];
@@ -17,7 +18,11 @@ export function PreviewPane({ files, onConsole }: Props) {
     const handler = (e: MessageEvent) => {
       const data = e.data;
       if (data && data.__ide_console) {
-        onConsole({ level: data.level, msg: data.msg, ts: Date.now() });
+        const entry = { level: data.level, msg: data.msg, ts: Date.now() };
+        onConsole(entry);
+        if (entry.level === "error") {
+          pushRuntimeError(entry);
+        }
       }
     };
     window.addEventListener("message", handler);
