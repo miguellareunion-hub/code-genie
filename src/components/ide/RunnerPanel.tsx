@@ -12,6 +12,30 @@ interface Props {
 type LogEntry = { level: string; line: string; ts: number };
 type Status = "idle" | "starting" | "installing" | "running" | "stopped" | "error";
 
+/** Heuristic: is this stderr line a real error (vs a warning, info, color code)? */
+function isLikelyError(line: string): boolean {
+  const lower = line.toLowerCase();
+  if (/^npm warn/i.test(line)) return false;
+  if (/^npm notice/i.test(line)) return false;
+  return (
+    /error[:\s]/i.test(lower) ||
+    /\b(syntaxerror|typeerror|referenceerror|rangeerror)\b/i.test(lower) ||
+    /\bcannot find module\b/i.test(lower) ||
+    /\bdoes not provide an export\b/i.test(lower) ||
+    /\beaddrinuse\b/i.test(lower) ||
+    /\berr_module_not_found\b/i.test(lower) ||
+    /^\s*at\s+\S+/i.test(line) // stack frame
+  );
+}
+
+/** Send an error line to the AgentChat to ask the Fixer to repair it. */
+function sendToFixer(errorLine: string) {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent("lovable:fix-runner-error", { detail: { error: errorLine } }),
+  );
+}
+
 export function RunnerPanel({ projectId, files }: Props) {
   const [settings, setSettings] = useState<RunnerSettings>(() => loadRunnerSettings());
   const [showSettings, setShowSettings] = useState(false);
