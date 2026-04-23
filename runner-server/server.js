@@ -185,6 +185,12 @@ function runScript(projectId, dir, script) {
 
   (async () => {
     try {
+      // free APP_PORT before doing anything: a survivor from a previous run
+      // (e.g. an old `node server.js` from another project) would otherwise
+      // crash the new dev server with EADDRINUSE.
+      pushLog(projectId, "system", `freeing port ${APP_PORT}…`);
+      await freePort(APP_PORT);
+
       // always install first if package.json exists
       const hasPkg = fs.existsSync(path.join(dir, "package.json"));
       if (hasPkg && !isInstallOnly) {
