@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-export const Route = (createFileRoute("/api/chat") as any)({
+// @ts-expect-error - server property typing lags behind runtime support
+export const Route = createFileRoute("/api/chat")({
   server: {
     handlers: {
       POST: async ({ request }: { request: Request }) => {
