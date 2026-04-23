@@ -85,6 +85,7 @@ function getSystemPrompt(role: AgentRole): string {
   return BUILDER_PROMPT;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const Route = createFileRoute("/api/chat")({
   server: {
     handlers: {
