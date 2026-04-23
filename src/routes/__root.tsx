@@ -1,8 +1,33 @@
-import { Outlet, Link, createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
+import { Outlet, Link, createRootRoute, HeadContent, Scripts, useRouter } from "@tanstack/react-router";
+import { useEffect } from "react";
 
 import appCss from "../styles.css?url";
 
 function NotFoundComponent() {
+  const router = useRouter();
+
+  // SPA fallback: if the published static build couldn't pre-render a dynamic
+  // route like /ide/:projectId, the user lands here. Re-run the matcher on the
+  // client so the real route component takes over instead of showing 404.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const path = window.location.pathname;
+    // Known dynamic patterns that must resolve client-side.
+    if (/^\/ide\/[^/]+\/?$/.test(path)) {
+      router.navigate({ to: path, replace: true });
+      router.invalidate();
+    }
+  }, [router]);
+
+  // If we're on a dynamic route, render nothing while we re-route.
+  if (typeof window !== "undefined" && /^\/ide\/[^/]+\/?$/.test(window.location.pathname)) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
