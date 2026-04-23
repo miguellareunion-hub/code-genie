@@ -92,9 +92,13 @@ function killProject(projectId) {
   const p = projects.get(projectId);
   if (p && p.proc && !p.proc.killed) {
     try {
-      // negative pid kills the whole group on POSIX
+      // negative pid kills the whole group on POSIX (npm + child node)
       if (process.platform !== "win32") {
         try { process.kill(-p.proc.pid, "SIGTERM"); } catch (_) { p.proc.kill("SIGTERM"); }
+        // hard-kill any survivor after 1.5s
+        setTimeout(() => {
+          try { process.kill(-p.proc.pid, "SIGKILL"); } catch (_) { /* gone */ }
+        }, 1500);
       } else {
         p.proc.kill("SIGTERM");
       }
@@ -102,6 +106,42 @@ function killProject(projectId) {
       console.error("kill error", e);
     }
   }
+}
+
+// Best-effort: free APP_PORT by killing whatever still listens on it.
+// Used between runs so a stuck `node server.js` from a previous project
+// can't block the next `npm run dev` with EADDRINUSE.
+function freePort(port) {
+  return new Promise((resolve) => {
+    if (process.platform === "win32") {
+      // netstat + taskkill on Windows
+      const ns = spawn("cmd", ["/c", `for /f "tokens=5" %a in ('netstat -ano ^| findstr :${port} ^| findstr LISTENING') do taskkill /F /PID %a`], { shell: false });
+      ns.on("exit", () => resolve());
+      ns.on("error", () => resolve());
+      return;
+    }
+    // POSIX: try lsof, then fuser as fallback. Both may be missing — that's OK.
+    const tryCmd = (cmd, args) => new Promise((res) => {
+      const p = spawn(cmd, args, { shell: false });
+      let out = "";
+      p.stdout && p.stdout.on("data", (b) => { out += b.toString(); });
+      p.on("error", () => res(""));
+      p.on("exit", () => res(out.trim()));
+    });
+    (async () => {
+      let pids = await tryCmd("lsof", ["-ti", `:${port}`]);
+      if (!pids) {
+        // fuser prints to stderr; just try and ignore output
+        await tryCmd("fuser", ["-k", `${port}/tcp`]);
+      } else {
+        for (const pid of pids.split(/\s+/).filter(Boolean)) {
+          try { process.kill(parseInt(pid, 10), "SIGKILL"); } catch (_) { /* */ }
+        }
+      }
+      // small grace period so the kernel actually releases the socket
+      setTimeout(resolve, 400);
+    })();
+  });
 }
 
 function runScript(projectId, dir, script) {
