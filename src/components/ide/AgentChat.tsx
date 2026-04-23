@@ -8,15 +8,24 @@ import {
   Loader2,
   Settings as SettingsIcon,
   Wand2,
+  ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { FileNode } from "@/lib/projects";
 import { loadAISettings } from "@/lib/aiSettings";
 import { parseAgentOutput, type AgentAction } from "@/lib/agentActions";
+import {
+  clearRuntimeErrors,
+  drainRuntimeErrors,
+  type RuntimeError,
+} from "@/lib/runtimeErrors";
+
+type AgentRole = "builder" | "fixer";
 
 type Msg = {
   role: "user" | "assistant";
-  content: string; // raw streamed content for assistant; plain text for user
+  content: string;
+  agentRole?: AgentRole;
 };
 
 interface Props {
@@ -26,6 +35,10 @@ interface Props {
   onWriteFile: (path: string, content: string) => void;
   onRenameFile: (from: string, to: string) => void;
   onDeleteFile: (path: string) => void;
+  /** Called after an agent applies file changes so the UI can show the preview. */
+  onSwitchToPreview?: () => void;
+  /** Callback used to read the *latest* file list synchronously between fix iterations. */
+  getLatestFiles: () => FileNode[];
 }
 
 const SUGGESTIONS = [
@@ -35,6 +48,10 @@ const SUGGESTIONS = [
   "Add a dark mode toggle",
 ];
 
+const MAX_FIX_ITERATIONS = 3;
+/** Delay after applying files so the iframe runs and reports any errors. */
+const RUNTIME_OBSERVE_MS = 1500;
+
 export function AgentChat({
   files,
   activeFile,
@@ -42,117 +59,106 @@ export function AgentChat({
   onWriteFile,
   onRenameFile,
   onDeleteFile,
+  onSwitchToPreview,
+  getLatestFiles,
 }: Props) {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [statusLine, setStatusLine] = useState<string>("");
   const abortRef = useRef<AbortController | null>(null);
 
-  const send = async (text: string) => {
-    const trimmed = text.trim();
-    if (!trimmed || loading) return;
-
-    const context = `Project files (current):\n${
-      files.length === 0
+  const buildContext = (currentFiles: FileNode[], openName?: string) =>
+    `Project files (current):\n${
+      currentFiles.length === 0
         ? "(empty project — no files yet)"
-        : files.map((f) => `--- ${f.name} ---\n${f.content}`).join("\n\n")
-    }\n\nCurrently open file: ${activeFile?.name ?? "(none)"}`;
+        : currentFiles.map((f) => `--- ${f.name} ---\n${f.content}`).join("\n\n")
+    }\n\nCurrently open file: ${openName ?? "(none)"}`;
 
-    const userMsg: Msg = {
-      role: "user",
-      content: `${trimmed}\n\n<context>\n${context}\n</context>`,
-    };
-    const visibleUserMsg: Msg = { role: "user", content: trimmed };
-    const next: Msg[] = [...messages, visibleUserMsg];
-    setMessages(next);
-    setInput("");
-    setLoading(true);
-
-    const controller = new AbortController();
-    abortRef.current = controller;
-
+  /**
+   * Streams a single agent turn. Returns the raw assistant text and the
+   * applied actions list.
+   */
+  const runAgentTurn = async (
+    role: AgentRole,
+    apiMessages: Msg[],
+    signal: AbortSignal,
+  ): Promise<{ text: string; actions: AgentAction[] } | null> => {
     let assistantSoFar = "";
+    setMessages((prev) => [
+      ...prev,
+      { role: "assistant", content: "", agentRole: role },
+    ]);
+
     const upsert = (chunk: string) => {
       assistantSoFar += chunk;
-      setMessages((prev) => {
-        const last = prev[prev.length - 1];
-        if (last?.role === "assistant") {
-          return prev.map((m, i) =>
-            i === prev.length - 1 ? { ...m, content: assistantSoFar } : m,
-          );
-        }
-        return [...prev, { role: "assistant", content: assistantSoFar }];
-      });
+      setMessages((prev) =>
+        prev.map((m, i) =>
+          i === prev.length - 1 && m.role === "assistant"
+            ? { ...m, content: assistantSoFar }
+            : m,
+        ),
+      );
     };
 
-    try {
-      const apiMessages = [...messages, userMsg];
-      const settings = loadAISettings();
-      const resp = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: apiMessages,
-          provider: settings.provider,
-          model:
-            settings.provider === "openai" ? settings.openaiModel : settings.lovableModel,
-          openaiApiKey: settings.provider === "openai" ? settings.openaiApiKey : undefined,
-        }),
-        signal: controller.signal,
-      });
+    const settings = loadAISettings();
+    const resp = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        role,
+        messages: apiMessages.map((m) => ({ role: m.role, content: m.content })),
+        provider: settings.provider,
+        model:
+          settings.provider === "openai" ? settings.openaiModel : settings.lovableModel,
+        openaiApiKey: settings.provider === "openai" ? settings.openaiApiKey : undefined,
+      }),
+      signal,
+    });
 
-      if (!resp.ok || !resp.body) {
-        let msg = "Failed to reach the AI agent.";
+    if (!resp.ok || !resp.body) {
+      let msg = "Failed to reach the AI agent.";
+      try {
+        const j = await resp.json();
+        if (j?.error) msg = j.error;
+      } catch {}
+      upsert(`⚠️ ${msg}`);
+      return null;
+    }
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let done = false;
+    while (!done) {
+      const { done: d, value } = await reader.read();
+      if (d) break;
+      buffer += decoder.decode(value, { stream: true });
+      let nl: number;
+      while ((nl = buffer.indexOf("\n")) !== -1) {
+        let line = buffer.slice(0, nl);
+        buffer = buffer.slice(nl + 1);
+        if (line.endsWith("\r")) line = line.slice(0, -1);
+        if (!line || line.startsWith(":")) continue;
+        if (!line.startsWith("data: ")) continue;
+        const json = line.slice(6).trim();
+        if (json === "[DONE]") {
+          done = true;
+          break;
+        }
         try {
-          const j = await resp.json();
-          if (j?.error) msg = j.error;
-        } catch {}
-        upsert(`⚠️ ${msg}`);
-        return;
-      }
-
-      const reader = resp.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let done = false;
-      while (!done) {
-        const { done: d, value } = await reader.read();
-        if (d) break;
-        buffer += decoder.decode(value, { stream: true });
-        let nl: number;
-        while ((nl = buffer.indexOf("\n")) !== -1) {
-          let line = buffer.slice(0, nl);
-          buffer = buffer.slice(nl + 1);
-          if (line.endsWith("\r")) line = line.slice(0, -1);
-          if (!line || line.startsWith(":")) continue;
-          if (!line.startsWith("data: ")) continue;
-          const json = line.slice(6).trim();
-          if (json === "[DONE]") {
-            done = true;
-            break;
-          }
-          try {
-            const parsed = JSON.parse(json);
-            const content = parsed.choices?.[0]?.delta?.content as string | undefined;
-            if (content) upsert(content);
-          } catch {
-            buffer = line + "\n" + buffer;
-            break;
-          }
+          const parsed = JSON.parse(json);
+          const content = parsed.choices?.[0]?.delta?.content as string | undefined;
+          if (content) upsert(content);
+        } catch {
+          buffer = line + "\n" + buffer;
+          break;
         }
       }
-
-      // Once streaming is complete, parse + apply actions to the project.
-      const { actions } = parseAgentOutput(assistantSoFar);
-      applyActions(actions);
-    } catch (err) {
-      if ((err as Error).name !== "AbortError") {
-        upsert(`⚠️ ${(err as Error).message}`);
-      }
-    } finally {
-      setLoading(false);
-      abortRef.current = null;
     }
+
+    const { actions } = parseAgentOutput(assistantSoFar);
+    return { text: assistantSoFar, actions };
   };
 
   const applyActions = (actions: AgentAction[]) => {
@@ -167,13 +173,102 @@ export function AgentChat({
     }
   };
 
+  /** Wait for the iframe to render and collect any runtime errors that occur. */
+  const observeRuntime = async (sinceTs: number): Promise<RuntimeError[]> => {
+    await new Promise((r) => setTimeout(r, RUNTIME_OBSERVE_MS));
+    return drainRuntimeErrors(sinceTs);
+  };
+
+  const send = async (text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed || loading) return;
+
+    const visibleUserMsg: Msg = { role: "user", content: trimmed };
+    const baseHistory: Msg[] = [...messages, visibleUserMsg];
+    setMessages(baseHistory);
+    setInput("");
+    setLoading(true);
+    setStatusLine("Builder agent is thinking…");
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    try {
+      // ---------- Builder turn ----------
+      clearRuntimeErrors();
+      const builderUserMsg: Msg = {
+        role: "user",
+        content: `${trimmed}\n\n<context>\n${buildContext(files, activeFile?.name)}\n</context>`,
+      };
+      const builderHistory: Msg[] = [
+        ...messages,
+        builderUserMsg,
+      ];
+      const builderResult = await runAgentTurn("builder", builderHistory, controller.signal);
+      if (!builderResult) return;
+      applyActions(builderResult.actions);
+      if (builderResult.actions.length > 0) onSwitchToPreview?.();
+
+      // ---------- Fixer loop ----------
+      let lastAssistantText = builderResult.text;
+      for (let iter = 1; iter <= MAX_FIX_ITERATIONS; iter++) {
+        if (controller.signal.aborted) break;
+        setStatusLine(`Running project & checking for errors (pass ${iter})…`);
+        const checkpoint = Date.now() - 50;
+        const errors = await observeRuntime(checkpoint);
+        if (errors.length === 0) {
+          setStatusLine(""); // 
+          break;
+        }
+
+        setStatusLine(
+          `Fixer agent detected ${errors.length} runtime error${errors.length > 1 ? "s" : ""}. Repairing…`,
+        );
+
+        const errorBlock = errors.map((e) => `- ${e.msg}`).join("\n");
+        const fixerUserMsg: Msg = {
+          role: "user",
+          content:
+            `The previous code produced runtime errors when executed in the iframe preview.\n\n` +
+            `Errors:\n${errorBlock}\n\n` +
+            `<context>\n${buildContext(getLatestFiles())}\n</context>\n\n` +
+            `Fix the bug(s). Re-emit ONLY the file(s) that need changes using <lov-write>.`,
+        };
+
+        // We pass the prior assistant text + new fixer prompt as fresh context,
+        // skipping the long original conversation to keep tokens small.
+        const fixerHistory: Msg[] = [
+          { role: "assistant", content: lastAssistantText },
+          fixerUserMsg,
+        ];
+        const fixerResult = await runAgentTurn("fixer", fixerHistory, controller.signal);
+        if (!fixerResult) break;
+        applyActions(fixerResult.actions);
+        lastAssistantText = fixerResult.text;
+        clearRuntimeErrors();
+      }
+      setStatusLine("");
+    } catch (err) {
+      if ((err as Error).name !== "AbortError") {
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: `⚠️ ${(err as Error).message}` },
+        ]);
+      }
+    } finally {
+      setLoading(false);
+      setStatusLine("");
+      abortRef.current = null;
+    }
+  };
+
   return (
     <div className="flex h-full flex-col bg-[var(--panel-bg)]">
       <div className="flex items-center justify-between border-b border-border bg-[var(--sidebar-bg)] px-3 py-1.5">
         <span className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
           <Sparkles className="h-3.5 w-3.5 text-primary" /> AI Agent
           <span className="ml-1 hidden items-center gap-1 rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary sm:inline-flex">
-            <Wand2 className="h-2.5 w-2.5" /> autonomous
+            <Wand2 className="h-2.5 w-2.5" /> multi-agent
           </span>
         </span>
         <div className="flex items-center gap-2">
@@ -202,10 +297,11 @@ export function AgentChat({
           <div className="space-y-3">
             <div className="rounded-lg border border-border bg-card p-3 text-sm text-muted-foreground">
               <p className="mb-2 flex items-center gap-2 text-foreground">
-                <Bot className="h-4 w-4 text-primary" /> Hi! I'm your autonomous coding agent.
+                <Bot className="h-4 w-4 text-primary" /> Hi! I'm your multi-agent coding system.
               </p>
-              Tell me what to build and I'll create / edit the files in your project
-              automatically. I can also explain or debug existing code.
+              I'll <strong>build</strong> the project, <strong>run it</strong> in the preview,
+              and a <strong>fixer agent</strong> will automatically repair any runtime errors —
+              up to {MAX_FIX_ITERATIONS} passes.
             </div>
             <div className="flex flex-wrap gap-2">
               {SUGGESTIONS.map((s) => (
@@ -224,9 +320,9 @@ export function AgentChat({
         {messages.map((m, i) => (
           <ChatMessage key={i} message={m} />
         ))}
-        {loading && messages[messages.length - 1]?.role === "user" && (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Thinking…
+        {loading && statusLine && (
+          <div className="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/5 px-2 py-1.5 text-xs text-primary">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" /> {statusLine}
           </div>
         )}
       </div>
@@ -279,23 +375,42 @@ function ChatMessage({ message }: { message: Msg }) {
     );
   }
 
-  // Assistant — strip action tags out of the displayed text so the user sees a clean
-  // explanation + a list of applied changes.
   const { text, actions } = parseAgentOutput(message.content || "");
+  const isFixer = message.agentRole === "fixer";
   return (
     <div className="flex justify-start gap-2 text-sm">
-      <div className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
-        <Bot className="h-3.5 w-3.5" />
+      <div
+        className={cn(
+          "mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full",
+          isFixer ? "bg-amber-500/15 text-amber-500" : "bg-primary/15 text-primary",
+        )}
+      >
+        {isFixer ? <ShieldCheck className="h-3.5 w-3.5" /> : <Bot className="h-3.5 w-3.5" />}
       </div>
       <div className="max-w-[85%] space-y-2 rounded-lg bg-card px-3 py-2 text-foreground">
+        <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+          {isFixer ? "Fixer agent" : "Builder agent"}
+        </div>
         <div className="prose prose-invert prose-sm max-w-none prose-pre:my-2 prose-pre:bg-[var(--terminal-bg)] prose-code:text-primary">
           <ReactMarkdown>{text || "…"}</ReactMarkdown>
         </div>
         {actions.length > 0 && (
-          <div className="rounded-md border border-primary/30 bg-primary/5 p-2 text-[11px]">
-            <div className="mb-1 flex items-center gap-1 font-medium text-primary">
-              <Wand2 className="h-3 w-3" /> Applied {actions.length} change
-              {actions.length > 1 ? "s" : ""}
+          <div
+            className={cn(
+              "rounded-md border p-2 text-[11px]",
+              isFixer
+                ? "border-amber-500/30 bg-amber-500/5"
+                : "border-primary/30 bg-primary/5",
+            )}
+          >
+            <div
+              className={cn(
+                "mb-1 flex items-center gap-1 font-medium",
+                isFixer ? "text-amber-500" : "text-primary",
+              )}
+            >
+              {isFixer ? <ShieldCheck className="h-3 w-3" /> : <Wand2 className="h-3 w-3" />}
+              Applied {actions.length} change{actions.length > 1 ? "s" : ""}
             </div>
             <ul className="space-y-0.5 text-muted-foreground">
               {actions.map((a, idx) => (

@@ -240,6 +240,8 @@ function IdePage() {
               onWriteFile={writeFileByPath}
               onRenameFile={renameFileByPath}
               onDeleteFile={deleteFileByPath}
+              onSwitchToPreview={() => setRightTab("preview")}
+              getLatestFiles={() => project.files}
             />
           </div>
         </aside>
