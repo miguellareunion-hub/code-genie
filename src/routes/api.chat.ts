@@ -66,7 +66,6 @@ function getSystemPrompt(role: AgentRole): string {
 }
 
 export const Route = createFileRoute("/api/chat")({
-  // @ts-expect-error - server property typing lags behind runtime support
   server: {
     handlers: {
       POST: async ({ request }: { request: Request }) => {
