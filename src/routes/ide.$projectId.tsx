@@ -8,7 +8,9 @@ import {
   Eye,
   Settings as SettingsIcon,
   Bot,
+  Download,
 } from "lucide-react";
+import JSZip from "jszip";
 import { useProject } from "@/hooks/useProject";
 import { FileExplorer } from "@/components/ide/FileExplorer";
 import { CodeEditor } from "@/components/ide/CodeEditor";
@@ -111,6 +113,23 @@ function IdePage() {
     [project, setActiveFileId],
   );
 
+  const handleDownloadZip = useCallback(async () => {
+    if (!project) return;
+    const zip = new JSZip();
+    for (const f of project.files) {
+      zip.file(f.name, f.content ?? "");
+    }
+    const blob = await zip.generateAsync({ type: "blob" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${project.name || "project"}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [project]);
+
   if (!loaded) {
     return (
       <div className="flex min-h-screen items-center justify-center text-foreground">
@@ -182,6 +201,14 @@ function IdePage() {
           >
             <Bot className="h-3.5 w-3.5" />
             Agents
+          </button>
+          <button
+            onClick={handleDownloadZip}
+            title="Télécharger le projet en .zip"
+            className="flex items-center gap-1.5 rounded px-2.5 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <Download className="h-3.5 w-3.5" />
+            ZIP
           </button>
           <button
             onClick={() => setSettingsOpen(true)}
