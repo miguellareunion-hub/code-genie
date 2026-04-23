@@ -170,6 +170,48 @@ export function SettingsDialog({ open, onClose, onSaved }: Props) {
               </div>
             </div>
           )}
+
+          {/* LM Studio config */}
+          {settings.provider === "lmstudio" && (
+            <div className="space-y-3 rounded-md border border-border bg-[var(--sidebar-bg)] p-3">
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-foreground">
+                  URL du serveur LM Studio
+                </label>
+                <input
+                  type="text"
+                  value={settings.lmstudioBaseUrl}
+                  onChange={(e) => update("lmstudioBaseUrl", e.target.value)}
+                  placeholder="http://localhost:1234/v1"
+                  className="w-full rounded-md border border-border bg-input px-2 py-2 text-sm outline-none focus:border-primary"
+                  spellCheck={false}
+                />
+                <p className="mt-1.5 text-[11px] text-muted-foreground">
+                  Lance le serveur dans LM Studio (onglet « Local Server ») et active CORS.
+                </p>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-foreground">
+                  Nom du modèle
+                </label>
+                <input
+                  type="text"
+                  value={settings.lmstudioModel}
+                  onChange={(e) => update("lmstudioModel", e.target.value)}
+                  placeholder="ex: qwen2.5-coder-7b-instruct"
+                  className="w-full rounded-md border border-border bg-input px-2 py-2 text-sm outline-none focus:border-primary"
+                  spellCheck={false}
+                />
+                <p className="mt-1.5 text-[11px] text-muted-foreground">
+                  L'identifiant exact du modèle chargé dans LM Studio.
+                </p>
+              </div>
+              <div className="rounded border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] text-amber-200">
+                ⚠️ L'appel se fait directement depuis ton navigateur vers LM Studio.
+                Ça ne marchera que si LM Studio tourne sur la même machine que celle où tu ouvres l'aperçu, et si CORS est activé dans LM Studio.
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="flex items-center justify-end gap-2 border-t border-border px-4 py-3">
