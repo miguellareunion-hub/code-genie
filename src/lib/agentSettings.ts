@@ -134,7 +134,7 @@ Re-emit index.html with <lov-write> if any change is needed. Don't touch JS or C
     emoji: "⚡",
     description: "Détecte les boucles inutiles, gros DOM, listeners en double, images lourdes.",
     role: "builder",
-    enabled: false,
+    enabled: true,
     systemPrompt: `You are the PERFORMANCE agent inside Lovable IDE.
 Look for obvious performance problems in the current project:
 - Event listeners added in loops or re-attached on every render.
