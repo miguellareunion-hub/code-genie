@@ -93,6 +93,67 @@ export function useProject(projectId: string | undefined) {
     [project, persist],
   );
 
+  /**
+   * Apply an agent action by file path (creates the file if missing,
+   * overwrites otherwise). Used by the AI agent to autonomously edit
+   * the project.
+   */
+  const writeFileByPath = useCallback(
+    (path: string, content: string) => {
+      if (!project) return;
+      const existing = project.files.find((f) => f.name === path);
+      if (existing) {
+        const next: Project = {
+          ...project,
+          files: project.files.map((f) =>
+            f.id === existing.id ? { ...f, content } : f,
+          ),
+        };
+        persist(next);
+      } else {
+        const file: FileNode = {
+          id: uid(),
+          name: path,
+          content,
+          language: languageFromName(path),
+        };
+        const next: Project = { ...project, files: [...project.files, file] };
+        persist(next);
+        setActiveFileId(file.id);
+      }
+    },
+    [project, persist],
+  );
+
+  const renameFileByPath = useCallback(
+    (from: string, to: string) => {
+      if (!project) return;
+      const f = project.files.find((x) => x.name === from);
+      if (!f) return;
+      if (project.files.some((x) => x.name === to && x.id !== f.id)) return;
+      const next: Project = {
+        ...project,
+        files: project.files.map((x) =>
+          x.id === f.id ? { ...x, name: to, language: languageFromName(to) } : x,
+        ),
+      };
+      persist(next);
+    },
+    [project, persist],
+  );
+
+  const deleteFileByPath = useCallback(
+    (path: string) => {
+      if (!project) return;
+      const f = project.files.find((x) => x.name === path);
+      if (!f) return;
+      const next: Project = { ...project, files: project.files.filter((x) => x.id !== f.id) };
+      persist(next);
+      if (activeFileId === f.id) setActiveFileId(next.files[0]?.id ?? null);
+    },
+    [project, persist, activeFileId],
+  );
+
   return {
     project,
     loaded,
@@ -103,5 +164,8 @@ export function useProject(projectId: string | undefined) {
     deleteFile,
     renameFile,
     renameProject,
+    writeFileByPath,
+    renameFileByPath,
+    deleteFileByPath,
   };
 }
