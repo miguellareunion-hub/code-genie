@@ -97,10 +97,26 @@ function IdePage() {
     [project, setActiveFileId],
   );
 
-  if (!project) {
+  if (!loaded) {
     return (
       <div className="flex min-h-screen items-center justify-center text-foreground">
         <p className="text-muted-foreground">Loading project…</p>
+      </div>
+    );
+  }
+
+  if (!project) {
+    return (
+      <div className="flex min-h-screen items-center justify-center text-foreground">
+        <div className="text-center">
+          <h1 className="text-2xl font-semibold">Project not found</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            This project doesn't exist on this device. Projects are stored locally in your browser.
+          </p>
+          <Link to="/" className="mt-4 inline-block text-primary hover:underline">
+            ← Back to projects
+          </Link>
+        </div>
       </div>
     );
   }
