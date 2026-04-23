@@ -105,7 +105,7 @@ Re-emit only the file(s) that need fixes with <lov-write>. If nothing to fix, sa
     emoji: "🐛",
     description: "Analyse les erreurs runtime en profondeur et propose un correctif robuste.",
     role: "fixer",
-    enabled: false,
+    enabled: true,
     systemPrompt: `You are the DEBUGGER agent inside Lovable IDE.
 A previous Fixer pass already attempted to repair runtime errors. Your job is a deeper review:
 - Re-read the errors and the current files in <context>.
