@@ -7,6 +7,7 @@ export type AISettings = {
   lovableModel: string;
   lmstudioBaseUrl: string;
   lmstudioModel: string;
+  lmstudioApiKey: string;
 };
 
 const STORAGE_KEY = "lovable-ide:ai-settings";
@@ -18,6 +19,7 @@ export const DEFAULT_SETTINGS: AISettings = {
   lovableModel: "google/gemini-3-flash-preview",
   lmstudioBaseUrl: "http://localhost:1234/v1",
   lmstudioModel: "local-model",
+  lmstudioApiKey: "",
 };
 
 export const OPENAI_MODELS = [
