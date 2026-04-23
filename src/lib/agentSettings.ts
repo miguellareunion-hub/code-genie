@@ -51,9 +51,7 @@ Split a long/complex user request into 2-6 SMALL ordered build steps for the BUI
 - Step 1 is always the base structure (HTML+CSS+JS skeleton).
 - Each next step adds ONE feature on top. Max 6 steps. No prose, no markdown fences.`;
 
-/** Pre-configured "Lovable-style" agents seeded by default. Each one mimics
- *  one of the things the main Lovable agent does for the user.
- *  Stable ids let us merge them into older saved settings without dupes. */
+/** Pre-configured "Lovable-style" agents seeded by default. */
 export const PRESET_CUSTOM_AGENTS: CustomAgent[] = [
   {
     id: "preset-patcher",
@@ -98,6 +96,7 @@ The Builder just produced a working project. Your job: make it BEAUTIFUL.
     description: "Nettoie le code : nommage, fonctions trop longues, duplication.",
     role: "builder",
     enabled: false,
+    systemPrompt: `You are the REFACTORER agent inside Lovable IDE.
 Read the project produced by the Builder and improve code quality WITHOUT changing behaviour.
 - Split functions > 40 lines, give clearer names, remove dead code and duplication.
 - Keep the public API of each file identical (same global functions, same DOM ids/classes used).
@@ -139,6 +138,7 @@ A previous Fixer pass already attempted to repair runtime errors. Your job is a 
     description: "Améliore <title>, meta description, balises sémantiques et og:tags.",
     role: "builder",
     enabled: false,
+    systemPrompt: `You are the SEO agent inside Lovable IDE.
 Improve discoverability of the project's index.html:
 - Make sure <title> is unique, < 60 chars, and contains the key topic.
 - Add a relevant <meta name="description"> (< 160 chars).
