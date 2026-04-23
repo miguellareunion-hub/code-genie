@@ -1,14 +1,16 @@
 import { useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import { Bot, Send, Sparkles, User2, Loader2 } from "lucide-react";
+import { Bot, Send, Sparkles, User2, Loader2, Settings as SettingsIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { FileNode } from "@/lib/projects";
+import { loadAISettings } from "@/lib/aiSettings";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
 interface Props {
   files: FileNode[];
   activeFile: FileNode | null;
+  onOpenSettings?: () => void;
 }
 
 const SUGGESTIONS = [
@@ -18,7 +20,7 @@ const SUGGESTIONS = [
   "Make it look more modern",
 ];
 
-export function AgentChat({ files, activeFile }: Props) {
+export function AgentChat({ files, activeFile, onOpenSettings }: Props) {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -61,10 +63,17 @@ export function AgentChat({ files, activeFile }: Props) {
 
     try {
       const apiMessages = [...messages, userMsg];
+      const settings = loadAISettings();
       const resp = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: apiMessages }),
+        body: JSON.stringify({
+          messages: apiMessages,
+          provider: settings.provider,
+          model:
+            settings.provider === "openai" ? settings.openaiModel : settings.lovableModel,
+          openaiApiKey: settings.provider === "openai" ? settings.openaiApiKey : undefined,
+        }),
         signal: controller.signal,
       });
 
@@ -124,14 +133,25 @@ export function AgentChat({ files, activeFile }: Props) {
         <span className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
           <Sparkles className="h-3.5 w-3.5 text-primary" /> AI Agent
         </span>
-        {loading && (
-          <button
-            onClick={() => abortRef.current?.abort()}
-            className="text-xs text-muted-foreground hover:text-foreground"
-          >
-            Stop
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {loading && (
+            <button
+              onClick={() => abortRef.current?.abort()}
+              className="text-xs text-muted-foreground hover:text-foreground"
+            >
+              Stop
+            </button>
+          )}
+          {onOpenSettings && (
+            <button
+              onClick={onOpenSettings}
+              title="AI settings"
+              className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              <SettingsIcon className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex-1 space-y-3 overflow-auto p-3">
