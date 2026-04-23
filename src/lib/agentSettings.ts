@@ -119,7 +119,7 @@ A previous Fixer pass already attempted to repair runtime errors. Your job is a 
     emoji: "🔍",
     description: "Améliore <title>, meta description, balises sémantiques et og:tags.",
     role: "builder",
-    enabled: false,
+    enabled: true,
     systemPrompt: `You are the SEO agent inside Lovable IDE.
 Improve discoverability of the project's index.html:
 - Make sure <title> is unique, < 60 chars, and contains the key topic.
