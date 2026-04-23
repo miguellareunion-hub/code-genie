@@ -466,8 +466,8 @@ export function AgentChat({
                 <Bot className="h-4 w-4 text-primary" /> Hi! I'm your multi-agent coding system.
               </p>
               I'll <strong>build</strong> the project, <strong>run it</strong> in the preview,
-              and a <strong>fixer agent</strong> will automatically repair any runtime errors —
-              up to {MAX_FIX_ITERATIONS} passes.
+              and a <strong>fixer agent</strong> will automatically repair any runtime errors.
+              Customize each agent in the <strong>Agents</strong> menu (top bar).
             </div>
             <div className="flex flex-wrap gap-2">
               {SUGGESTIONS.map((s) => (
