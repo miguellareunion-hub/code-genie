@@ -115,12 +115,57 @@ export function AgentChat({
   onSwitchToPreview,
   getLatestFiles,
 }: Props) {
-  const [messages, setMessages] = useState<Msg[]>([]);
+  const storageKey = `lovable-ide:agent-chat:${projectId}`;
+  const [messages, setMessages] = useState<Msg[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = window.localStorage.getItem(`lovable-ide:agent-chat:${projectId}`);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed as Msg[];
+      return [];
+    } catch {
+      return [];
+    }
+  });
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [statusLine, setStatusLineRaw] = useState<string>("");
   const abortRef = useRef<AbortController | null>(null);
   const sendRef = useRef<((text: string) => void) | null>(null);
+
+  // Persist chat history per-project so a page refresh doesn't wipe context.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      if (messages.length === 0) {
+        window.localStorage.removeItem(storageKey);
+      } else {
+        // Cap stored history to avoid blowing up localStorage on long sessions.
+        const trimmed = messages.slice(-200);
+        window.localStorage.setItem(storageKey, JSON.stringify(trimmed));
+      }
+    } catch {
+      // Ignore quota errors — chat will still work in-memory.
+    }
+  }, [messages, storageKey]);
+
+  // Reload history when switching project (in case the component is reused).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(storageKey);
+      if (!raw) {
+        setMessages([]);
+        return;
+      }
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) setMessages(parsed as Msg[]);
+    } catch {
+      setMessages([]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
 
   /** Wrap setStatusLine so the RunnerPanel can show what the agent is doing in real time. */
   const setStatusLine = (s: string) => {
