@@ -95,6 +95,7 @@ export function useProject(projectId: string | undefined) {
 
   return {
     project,
+    loaded,
     activeFileId,
     setActiveFileId,
     updateFile,
