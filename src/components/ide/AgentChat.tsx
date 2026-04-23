@@ -21,6 +21,7 @@ import {
   type RuntimeError,
 } from "@/lib/runtimeErrors";
 import { validateProject, formatIssuesForFixer } from "@/lib/projectValidator";
+import { detectIntent, MODIFY_GUARD_PROMPT } from "@/lib/intentDetector";
 
 type AgentRole = "builder" | "fixer" | "planner";
 
