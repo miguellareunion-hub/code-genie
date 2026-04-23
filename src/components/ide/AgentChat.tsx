@@ -1,26 +1,48 @@
 import { useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import { Bot, Send, Sparkles, User2, Loader2, Settings as SettingsIcon } from "lucide-react";
+import {
+  Bot,
+  Send,
+  Sparkles,
+  User2,
+  Loader2,
+  Settings as SettingsIcon,
+  Wand2,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { FileNode } from "@/lib/projects";
 import { loadAISettings } from "@/lib/aiSettings";
+import { parseAgentOutput, type AgentAction } from "@/lib/agentActions";
 
-type Msg = { role: "user" | "assistant"; content: string };
+type Msg = {
+  role: "user" | "assistant";
+  content: string; // raw streamed content for assistant; plain text for user
+};
 
 interface Props {
   files: FileNode[];
   activeFile: FileNode | null;
   onOpenSettings?: () => void;
+  onWriteFile: (path: string, content: string) => void;
+  onRenameFile: (from: string, to: string) => void;
+  onDeleteFile: (path: string) => void;
 }
 
 const SUGGESTIONS = [
-  "Explain this file",
+  "Build a tic-tac-toe game",
+  "Create a todo list app",
+  "Make a landing page for a coffee shop",
   "Add a dark mode toggle",
-  "Fix any bugs in my code",
-  "Make it look more modern",
 ];
 
-export function AgentChat({ files, activeFile, onOpenSettings }: Props) {
+export function AgentChat({
+  files,
+  activeFile,
+  onOpenSettings,
+  onWriteFile,
+  onRenameFile,
+  onDeleteFile,
+}: Props) {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -30,9 +52,11 @@ export function AgentChat({ files, activeFile, onOpenSettings }: Props) {
     const trimmed = text.trim();
     if (!trimmed || loading) return;
 
-    const context = `Project files (current):\n${files
-      .map((f) => `--- ${f.name} ---\n${f.content}`)
-      .join("\n\n")}\n\nCurrently open file: ${activeFile?.name ?? "(none)"}`;
+    const context = `Project files (current):\n${
+      files.length === 0
+        ? "(empty project — no files yet)"
+        : files.map((f) => `--- ${f.name} ---\n${f.content}`).join("\n\n")
+    }\n\nCurrently open file: ${activeFile?.name ?? "(none)"}`;
 
     const userMsg: Msg = {
       role: "user",
@@ -117,6 +141,10 @@ export function AgentChat({ files, activeFile, onOpenSettings }: Props) {
           }
         }
       }
+
+      // Once streaming is complete, parse + apply actions to the project.
+      const { actions } = parseAgentOutput(assistantSoFar);
+      applyActions(actions);
     } catch (err) {
       if ((err as Error).name !== "AbortError") {
         upsert(`⚠️ ${(err as Error).message}`);
@@ -127,11 +155,26 @@ export function AgentChat({ files, activeFile, onOpenSettings }: Props) {
     }
   };
 
+  const applyActions = (actions: AgentAction[]) => {
+    for (const a of actions) {
+      try {
+        if (a.type === "write") onWriteFile(a.path, a.content);
+        else if (a.type === "rename") onRenameFile(a.from, a.to);
+        else if (a.type === "delete") onDeleteFile(a.path);
+      } catch (e) {
+        console.error("Failed to apply agent action", a, e);
+      }
+    }
+  };
+
   return (
     <div className="flex h-full flex-col bg-[var(--panel-bg)]">
       <div className="flex items-center justify-between border-b border-border bg-[var(--sidebar-bg)] px-3 py-1.5">
         <span className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
           <Sparkles className="h-3.5 w-3.5 text-primary" /> AI Agent
+          <span className="ml-1 hidden items-center gap-1 rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary sm:inline-flex">
+            <Wand2 className="h-2.5 w-2.5" /> autonomous
+          </span>
         </span>
         <div className="flex items-center gap-2">
           {loading && (
@@ -159,9 +202,10 @@ export function AgentChat({ files, activeFile, onOpenSettings }: Props) {
           <div className="space-y-3">
             <div className="rounded-lg border border-border bg-card p-3 text-sm text-muted-foreground">
               <p className="mb-2 flex items-center gap-2 text-foreground">
-                <Bot className="h-4 w-4 text-primary" /> Hi! I'm your AI coding agent.
+                <Bot className="h-4 w-4 text-primary" /> Hi! I'm your autonomous coding agent.
               </p>
-              Ask me to explain, edit, or debug your code. I can see all files in this project.
+              Tell me what to build and I'll create / edit the files in your project
+              automatically. I can also explain or debug existing code.
             </div>
             <div className="flex flex-wrap gap-2">
               {SUGGESTIONS.map((s) => (
@@ -178,40 +222,7 @@ export function AgentChat({ files, activeFile, onOpenSettings }: Props) {
         )}
 
         {messages.map((m, i) => (
-          <div
-            key={i}
-            className={cn(
-              "flex gap-2 text-sm",
-              m.role === "user" ? "justify-end" : "justify-start",
-            )}
-          >
-            {m.role === "assistant" && (
-              <div className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
-                <Bot className="h-3.5 w-3.5" />
-              </div>
-            )}
-            <div
-              className={cn(
-                "max-w-[85%] rounded-lg px-3 py-2",
-                m.role === "user"
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-card text-foreground",
-              )}
-            >
-              {m.role === "assistant" ? (
-                <div className="prose prose-invert prose-sm max-w-none prose-pre:my-2 prose-pre:bg-[var(--terminal-bg)] prose-code:text-primary">
-                  <ReactMarkdown>{m.content || "…"}</ReactMarkdown>
-                </div>
-              ) : (
-                <span className="whitespace-pre-wrap">{m.content}</span>
-              )}
-            </div>
-            {m.role === "user" && (
-              <div className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                <User2 className="h-3.5 w-3.5" />
-              </div>
-            )}
-          </div>
+          <ChatMessage key={i} message={m} />
         ))}
         {loading && messages[messages.length - 1]?.role === "user" && (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -237,7 +248,7 @@ export function AgentChat({ files, activeFile, onOpenSettings }: Props) {
                 send(input);
               }
             }}
-            placeholder="Ask the AI agent…"
+            placeholder="Ask the agent to build something…"
             rows={1}
             className="max-h-32 flex-1 resize-none bg-transparent text-sm outline-none placeholder:text-muted-foreground"
           />
@@ -250,6 +261,66 @@ export function AgentChat({ files, activeFile, onOpenSettings }: Props) {
           </button>
         </div>
       </form>
+    </div>
+  );
+}
+
+function ChatMessage({ message }: { message: Msg }) {
+  if (message.role === "user") {
+    return (
+      <div className="flex justify-end gap-2 text-sm">
+        <div className="max-w-[85%] rounded-lg bg-primary px-3 py-2 text-primary-foreground">
+          <span className="whitespace-pre-wrap">{message.content}</span>
+        </div>
+        <div className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+          <User2 className="h-3.5 w-3.5" />
+        </div>
+      </div>
+    );
+  }
+
+  // Assistant — strip action tags out of the displayed text so the user sees a clean
+  // explanation + a list of applied changes.
+  const { text, actions } = parseAgentOutput(message.content || "");
+  return (
+    <div className="flex justify-start gap-2 text-sm">
+      <div className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+        <Bot className="h-3.5 w-3.5" />
+      </div>
+      <div className="max-w-[85%] space-y-2 rounded-lg bg-card px-3 py-2 text-foreground">
+        <div className="prose prose-invert prose-sm max-w-none prose-pre:my-2 prose-pre:bg-[var(--terminal-bg)] prose-code:text-primary">
+          <ReactMarkdown>{text || "…"}</ReactMarkdown>
+        </div>
+        {actions.length > 0 && (
+          <div className="rounded-md border border-primary/30 bg-primary/5 p-2 text-[11px]">
+            <div className="mb-1 flex items-center gap-1 font-medium text-primary">
+              <Wand2 className="h-3 w-3" /> Applied {actions.length} change
+              {actions.length > 1 ? "s" : ""}
+            </div>
+            <ul className="space-y-0.5 text-muted-foreground">
+              {actions.map((a, idx) => (
+                <li key={idx}>
+                  {a.type === "write" && (
+                    <>
+                      📝 <code>{a.path}</code>
+                    </>
+                  )}
+                  {a.type === "rename" && (
+                    <>
+                      ✏️ <code>{a.from}</code> → <code>{a.to}</code>
+                    </>
+                  )}
+                  {a.type === "delete" && (
+                    <>
+                      🗑️ <code>{a.path}</code>
+                    </>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

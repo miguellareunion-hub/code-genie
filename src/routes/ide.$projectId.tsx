@@ -44,6 +44,9 @@ function IdePage() {
     deleteFile,
     renameFile,
     renameProject,
+    writeFileByPath,
+    renameFileByPath,
+    deleteFileByPath,
   } = useProject(projectId);
 
   const [rightTab, setRightTab] = useState<RightTab>("preview");
@@ -234,6 +237,9 @@ function IdePage() {
               files={project.files}
               activeFile={activeFile}
               onOpenSettings={() => setSettingsOpen(true)}
+              onWriteFile={writeFileByPath}
+              onRenameFile={renameFileByPath}
+              onDeleteFile={deleteFileByPath}
             />
           </div>
         </aside>
