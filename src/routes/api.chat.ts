@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-type AgentRole = "builder" | "fixer";
+type AgentRole = "builder" | "fixer" | "planner";
 
 type ChatBody = {
   messages: { role: "user" | "assistant" | "system"; content: string }[];
@@ -61,8 +61,26 @@ Hard requirements:
 - After your fixes, briefly explain what was wrong (1–2 sentences).
 ${BASE_RULES}`;
 
+const PLANNER_PROMPT = `You are the PLANNER agent of an autonomous multi-agent system inside Lovable IDE.
+Your job: take a LONG or COMPLEX user request and split it into 2 to 6 SMALL, ORDERED, INDEPENDENT build steps that the BUILDER agent will execute one after the other.
+
+Rules:
+- Output ONLY valid JSON (no prose, no markdown fences). Schema:
+  { "steps": [ { "title": "short title", "instruction": "concrete instruction for the builder, in the same language as the user prompt" } ] }
+- Each step must be small enough to be implemented in a single response (one or a few files).
+- Step 1 is ALWAYS the base structure (HTML skeleton + CSS + main JS file with empty hooks).
+- Following steps add features INCREMENTALLY on top of the previous step. They must NOT recreate files from scratch — they patch / extend.
+- Keep at most 6 steps. Merge tiny tasks together.
+- Keep instructions short (1-3 sentences each). The builder already knows the global goal from step 1.
+- Do NOT add deployment, testing, documentation, or "polish" steps.
+- If the user request is already small/simple, output a single step.
+
+Environment: browser-only (HTML/CSS/vanilla JS, no Node, no npm). Files at project root.`;
+
 function getSystemPrompt(role: AgentRole): string {
-  return role === "fixer" ? FIXER_PROMPT : BUILDER_PROMPT;
+  if (role === "fixer") return FIXER_PROMPT;
+  if (role === "planner") return PLANNER_PROMPT;
+  return BUILDER_PROMPT;
 }
 
 export const Route = createFileRoute("/api/chat")({
