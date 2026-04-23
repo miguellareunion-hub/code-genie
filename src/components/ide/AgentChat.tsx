@@ -396,6 +396,38 @@ export function AgentChat({
         break;
       }
       lastAssistantText = fixerResult.text;
+
+      // ---- Custom fixer agents: extra repair passes ----
+      const customFixers = agentsSettings.customAgents.filter(
+        (a) => a.enabled && a.role === "fixer",
+      );
+      for (const ca of customFixers) {
+        if (controller.signal.aborted) break;
+        setStatusLine(`Agent custom « ${ca.name} » vérifie la correction…`);
+        const caHistory: Msg[] = [
+          { role: "assistant", content: lastAssistantText },
+          {
+            role: "user",
+            content:
+              `Errors that were observed:\n${errorBlock}\n\n` +
+              `<context>\n${buildContext(getLatestFiles())}\n</context>\n\n` +
+              `Review the fix above. If anything is still wrong or could be improved, re-emit corrected file(s) with <lov-write>. If the fix is good, just say so briefly.`,
+          },
+        ];
+        const caResult = await runAgentTurn(
+          "fixer",
+          caHistory,
+          controller.signal,
+          ca.systemPrompt,
+          `${ca.emoji} ${ca.name}`,
+        );
+        if (!caResult) break;
+        const caFailures = applyActions(caResult.actions);
+        if (caFailures.length > 0) break;
+        if (caResult.actions.length > 0) onSwitchToPreview?.();
+        lastAssistantText = caResult.text;
+      }
+
       clearRuntimeErrors();
     }
     return true;
