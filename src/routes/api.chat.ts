@@ -85,10 +85,8 @@ function getSystemPrompt(role: AgentRole): string {
   return BUILDER_PROMPT;
 }
 
-export const Route = createFileRoute("/api/chat")({
-  server: {
-    handlers: {
-      POST: async ({ request }: { request: Request }) => {
+export const ServerRoute = createFileRoute("/api/chat").methods({
+  POST: async ({ request }: { request: Request }) => {
         try {
           const body = (await request.json()) as ChatBody;
           const {
