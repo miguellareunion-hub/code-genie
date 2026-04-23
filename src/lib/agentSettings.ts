@@ -97,8 +97,7 @@ The Builder just produced a working project. Your job: make it BEAUTIFUL.
     emoji: "🧹",
     description: "Nettoie le code : nommage, fonctions trop longues, duplication.",
     role: "builder",
-    enabled: true,
-    systemPrompt: `You are the REFACTORER agent inside Lovable IDE.
+    enabled: false,
 Read the project produced by the Builder and improve code quality WITHOUT changing behaviour.
 - Split functions > 40 lines, give clearer names, remove dead code and duplication.
 - Keep the public API of each file identical (same global functions, same DOM ids/classes used).
@@ -139,8 +138,7 @@ A previous Fixer pass already attempted to repair runtime errors. Your job is a 
     emoji: "🔍",
     description: "Améliore <title>, meta description, balises sémantiques et og:tags.",
     role: "builder",
-    enabled: true,
-    systemPrompt: `You are the SEO agent inside Lovable IDE.
+    enabled: false,
 Improve discoverability of the project's index.html:
 - Make sure <title> is unique, < 60 chars, and contains the key topic.
 - Add a relevant <meta name="description"> (< 160 chars).
@@ -154,8 +152,7 @@ Re-emit index.html with <lov-write> if any change is needed. Don't touch JS or C
     emoji: "⚡",
     description: "Détecte les boucles inutiles, gros DOM, listeners en double, images lourdes.",
     role: "builder",
-    enabled: true,
-    systemPrompt: `You are the PERFORMANCE agent inside Lovable IDE.
+    enabled: false,
 Look for obvious performance problems in the current project:
 - Event listeners added in loops or re-attached on every render.
 - Heavy DOM operations inside a hot loop (use DocumentFragment, batch updates).
