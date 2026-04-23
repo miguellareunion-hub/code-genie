@@ -232,6 +232,33 @@ app.post("/api/run", checkAuth, async (req, res) => {
   }
 });
 
+/**
+ * Hot-sync: write/update files in the project workspace WITHOUT restarting
+ * the running process. Used by the IDE while the agent is editing code so
+ * dev servers (vite, nodemon, next dev…) can hot-reload naturally.
+ *
+ * If the project isn't running yet, we still write the files (so the next
+ * /api/run picks them up) and report "not_running" so the client knows.
+ */
+app.post("/api/sync", checkAuth, async (req, res) => {
+  try {
+    const { projectId, files } = req.body || {};
+    if (!projectId || !Array.isArray(files)) {
+      return res.status(400).json({ error: "projectId and files[] required" });
+    }
+    const dir = safeProjectDir(projectId);
+    await writeFiles(dir, files);
+    const p = projects.get(projectId);
+    const running = !!(p && p.proc && !p.proc.killed);
+    if (running) {
+      pushLog(projectId, "system", `↻ hot-sync: ${files.length} fichier(s) mis à jour`);
+    }
+    res.json({ ok: true, synced: files.length, running, status: p?.status || "idle" });
+  } catch (e) {
+    res.status(500).json({ error: String(e?.message || e) });
+  }
+});
+
 app.post("/api/stop", checkAuth, (req, res) => {
   const { projectId } = req.body || {};
   if (!projectId) return res.status(400).json({ error: "projectId required" });

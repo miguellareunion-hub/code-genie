@@ -206,39 +206,46 @@ export function RunnerPanel({ projectId, files }: Props) {
     setPreviewKey((k) => k + 1);
   }, []);
 
-  // Hot-sync: while the runner is up AND autoSync is on, re-send files to the
-  // runner whenever they change. Debounced so rapid agent edits coalesce.
+  // Hot-sync: re-send files to the runner whenever they change.
+  // Debounced so rapid agent edits coalesce. Uses /api/sync which writes
+  // files WITHOUT restarting the process (dev servers hot-reload naturally).
+  // Falls back to /api/run only if /api/sync returns 404 (older runner).
   useEffect(() => {
     if (!autoSync) return;
     if (!settings.token || !settings.url) return;
-    if (status !== "running" && status !== "installing") return;
+    // Allow sync as soon as we know there's an active or starting project.
+    // "idle" / "stopped" / "error" => skip.
+    if (status === "idle" || status === "stopped" || status === "error") return;
     const t = window.setTimeout(async () => {
       try {
         const payload = {
           projectId,
-          script: settings.script || "dev",
           files: filesRef.current.map((f) => ({ path: f.name, content: f.content })),
         };
-        await fetch(`${baseUrl}/api/sync`, {
+        const r = await fetch(`${baseUrl}/api/sync`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${settings.token}`,
           },
           body: JSON.stringify(payload),
-        }).catch(() => {
-          // /api/sync may not exist on older runner-server; fall back to /api/run
-          return fetch(`${baseUrl}/api/run`, {
+        });
+        if (r.status === 404) {
+          // Older runner without /api/sync — fall back to a full /api/run
+          await fetch(`${baseUrl}/api/run`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
               Authorization: `Bearer ${settings.token}`,
             },
-            body: JSON.stringify(payload),
+            body: JSON.stringify({ ...payload, script: settings.script || "dev" }),
           });
-        });
+          setPreviewKey((k) => k + 1);
+        } else if (r.ok) {
+          // Light reload of the iframe so the user sees fresh HTML/CSS.
+          setPreviewKey((k) => k + 1);
+        }
         setLastSyncedAt(Date.now());
-        setPreviewKey((k) => k + 1);
       } catch {
         /* ignore — logs already capture errors */
       }
