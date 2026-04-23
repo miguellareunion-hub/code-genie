@@ -224,7 +224,9 @@ export function SettingsDialog({ open, onClose, onSaved }: Props) {
           <button
             onClick={handleSave}
             disabled={
-              settings.provider === "openai" && !settings.openaiApiKey.trim()
+              (settings.provider === "openai" && !settings.openaiApiKey.trim()) ||
+              (settings.provider === "lmstudio" &&
+                (!settings.lmstudioBaseUrl.trim() || !settings.lmstudioModel.trim()))
             }
             className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
           >
