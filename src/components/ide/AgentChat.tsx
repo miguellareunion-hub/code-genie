@@ -9,6 +9,7 @@ import {
   Settings as SettingsIcon,
   Wand2,
   ShieldCheck,
+  Wrench,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { FileNode } from "@/lib/projects";
@@ -22,6 +23,7 @@ import {
 } from "@/lib/runtimeErrors";
 import { validateProject, formatIssuesForFixer } from "@/lib/projectValidator";
 import { detectIntent, MODIFY_GUARD_PROMPT } from "@/lib/intentDetector";
+import { TOOL_DEFS, executeTool, type ToolCall, type ToolResult } from "@/lib/agentTools";
 
 type AgentRole = "builder" | "fixer" | "planner";
 
@@ -74,9 +76,12 @@ type Msg = {
   role: "user" | "assistant";
   content: string;
   agentRole?: AgentRole;
+  /** Native-tools mode: list of tool calls executed during this assistant turn. */
+  toolEvents?: { label: string; ok: boolean }[];
 };
 
 interface Props {
+  projectId: string;
   files: FileNode[];
   activeFile: FileNode | null;
   onOpenSettings?: () => void;
@@ -100,6 +105,7 @@ const SUGGESTIONS = [
 const RUNTIME_OBSERVE_MS = 1500;
 
 export function AgentChat({
+  projectId,
   files,
   activeFile,
   onOpenSettings,
@@ -333,6 +339,234 @@ export function AgentChat({
     return drainRuntimeErrors(sinceTs);
   };
 
+  /**
+   * Native-tool-calling loop. The agent receives JSON-schema tool definitions
+   * (read_file, write_file, exec_shell, web_search, …) and we run them in a
+   * loop until it calls `finish` or hits the iteration cap.
+   *
+   * This mirrors how the IDE's own meta-agent works: the model decides what
+   * to do, we execute it, we send back the result, repeat.
+   */
+  const runAgentToolLoop = async (
+    initialUserPrompt: string,
+    controller: AbortController,
+  ): Promise<boolean> => {
+    const settings = loadAISettings();
+    const agentsSettings = loadAgentsSettings();
+    const isLmStudio = settings.provider === "lmstudio";
+
+    // Build initial system prompt — combines the Builder role with explicit
+    // tool-using instructions.
+    const builderOverride = agentsSettings.builder.systemPrompt.trim();
+    const baseRole = builderOverride.length > 0
+      ? builderOverride
+      : "You are the BUILDER agent of Lovable IDE. You design and ship working projects.";
+
+    const systemPrompt = `${baseRole}
+
+# YOU HAVE TOOLS — USE THEM
+You can call functions to read/write files, run shell commands, search the web, and make HTTP requests.
+You operate inside the user's project workspace (projectId="${projectId}").
+
+Workflow:
+1. Start by calling \`list_files\` to see what's already there (if anything).
+2. For modifications, call \`read_file\` on the file(s) you intend to change BEFORE writing them.
+3. Make changes with \`write_file\` (always provide COMPLETE file content), \`rename_file\`, \`delete_file\`.
+4. For Node projects, run \`exec_shell\` with "npm install" if needed, then verify with \`exec_shell\` "node -c file.js" or HTTP test.
+5. Use \`web_search\` when you need API docs, version info, or unfamiliar library syntax.
+6. When the task is fully done, call \`finish\` with a 1-2 sentence summary. Do NOT call any other tool after finish.
+
+# Hard rules
+- Never re-write a file that doesn't need to change. Targeted edits only.
+- For Node projects, ALWAYS include a package.json with proper scripts and dependencies.
+- For browser projects, use index.html + style.css + script.js at root.
+- One tool call at a time is fine; batching is also OK.
+- If a tool returns an error, READ it, then either fix and retry, or use \`finish\` to explain what blocked you.`;
+
+    // Conversation history we send to the model. Tool messages get appended
+    // as we go.
+    type ApiMsg = {
+      role: "system" | "user" | "assistant" | "tool";
+      content: string | null;
+      tool_call_id?: string;
+      tool_calls?: unknown;
+      name?: string;
+    };
+    const history: ApiMsg[] = [
+      { role: "system", content: systemPrompt },
+      {
+        role: "user",
+        content: `${initialUserPrompt}\n\n<currently_open_file>${activeFile?.name ?? "(none)"}</currently_open_file>`,
+      },
+    ];
+
+    // The visible assistant bubble we update as we go.
+    let visibleContent = "";
+    const toolEvents: { label: string; ok: boolean }[] = [];
+    setMessages((prev) => [
+      ...prev,
+      { role: "assistant", content: "", agentRole: "builder", toolEvents: [] },
+    ]);
+    const updateBubble = () => {
+      setMessages((prev) =>
+        prev.map((m, i) =>
+          i === prev.length - 1 && m.role === "assistant"
+            ? { ...m, content: visibleContent, toolEvents: [...toolEvents] }
+            : m,
+        ),
+      );
+    };
+
+    const ctx = {
+      projectId,
+      getFiles: getLatestFiles,
+      onWriteFile,
+      onRenameFile,
+      onDeleteFile,
+    };
+
+    const maxIters = Math.max(1, agentsSettings.maxToolIterations || 24);
+    for (let iter = 0; iter < maxIters; iter++) {
+      if (controller.signal.aborted) return false;
+      setStatusLine(`Agent réfléchit… (étape ${iter + 1}/${maxIters})`);
+
+      // Call the model in non-streaming mode so we can parse tool_calls cleanly.
+      const reqUrl = isLmStudio
+        ? `${settings.lmstudioBaseUrl.replace(/\/$/, "")}/chat/completions`
+        : "/api/chat";
+
+      const reqBody: Record<string, unknown> = isLmStudio
+        ? {
+            model: settings.lmstudioModel,
+            stream: false,
+            messages: history,
+            tools: TOOL_DEFS,
+            tool_choice: "auto",
+          }
+        : {
+            role: "builder",
+            messages: history.filter((m) => m.role !== "system"),
+            provider: settings.provider,
+            model:
+              settings.provider === "openai" ? settings.openaiModel : settings.lovableModel,
+            openaiApiKey: settings.provider === "openai" ? settings.openaiApiKey : undefined,
+            systemPromptOverride: systemPrompt,
+            tools: TOOL_DEFS,
+            tool_choice: "auto",
+            nonStreaming: true,
+          };
+
+      const reqHeaders: Record<string, string> = { "Content-Type": "application/json" };
+      if (isLmStudio && settings.lmstudioApiKey.trim()) {
+        reqHeaders["Authorization"] = `Bearer ${settings.lmstudioApiKey.trim()}`;
+      }
+
+      let resp: Response;
+      try {
+        resp = await fetch(reqUrl, {
+          method: "POST",
+          headers: reqHeaders,
+          body: JSON.stringify(reqBody),
+          signal: controller.signal,
+        });
+      } catch (e) {
+        visibleContent += `\n⚠️ Connexion échouée: ${(e as Error).message}`;
+        updateBubble();
+        return false;
+      }
+
+      if (!resp.ok) {
+        let errMsg = `HTTP ${resp.status}`;
+        try {
+          const t = await resp.text();
+          try {
+            const j = JSON.parse(t);
+            errMsg = j.error || j.message || errMsg;
+          } catch {
+            errMsg = t.slice(0, 300) || errMsg;
+          }
+        } catch { /* */ }
+        visibleContent += `\n⚠️ ${errMsg}`;
+        updateBubble();
+        return false;
+      }
+
+      const json = await resp.json();
+      const choice = json?.choices?.[0];
+      const message = choice?.message || {};
+      const assistantText: string = message.content || "";
+      const toolCalls: Array<{ id: string; function: { name: string; arguments: string } }> =
+        Array.isArray(message.tool_calls) ? message.tool_calls : [];
+
+      // Append assistant message (with tool_calls) to history exactly as
+      // received — required for the next round of tool messages to be valid.
+      history.push({
+        role: "assistant",
+        content: assistantText || null,
+        tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
+      });
+
+      if (assistantText) {
+        visibleContent += (visibleContent ? "\n\n" : "") + assistantText;
+        updateBubble();
+      }
+
+      if (toolCalls.length === 0) {
+        // No tool calls and no `finish` — model decided it's done. Stop.
+        setStatusLine("");
+        return true;
+      }
+
+      let sawFinish = false;
+      let appliedFileChange = false;
+      for (const tc of toolCalls) {
+        if (controller.signal.aborted) return false;
+        let parsedArgs: Record<string, unknown> = {};
+        try {
+          parsedArgs = tc.function.arguments
+            ? JSON.parse(tc.function.arguments)
+            : {};
+        } catch {
+          parsedArgs = {};
+        }
+        const call: ToolCall = {
+          id: tc.id,
+          name: tc.function.name,
+          args: parsedArgs,
+        };
+        setStatusLine(`🔧 ${call.name}…`);
+        const result: ToolResult = await executeTool(call, ctx);
+        toolEvents.push({ label: result.label, ok: result.ok });
+        updateBubble();
+
+        if (["write_file", "rename_file", "delete_file"].includes(call.name)) {
+          appliedFileChange = true;
+        }
+
+        history.push({
+          role: "tool",
+          tool_call_id: tc.id,
+          name: tc.function.name,
+          content: result.content,
+        });
+
+        if (call.name === "finish") sawFinish = true;
+      }
+
+      if (appliedFileChange) onSwitchToPreview?.();
+      if (sawFinish) {
+        setStatusLine("");
+        return true;
+      }
+    }
+
+    visibleContent += `\n\n⚠️ Limite de ${maxIters} étapes atteinte. Arrêt.`;
+    updateBubble();
+    setStatusLine("");
+    return true;
+  };
+
+
   /** Run a single builder + fixer cycle for one instruction (an entire prompt OR one plan step). */
   const runBuildCycle = async (
     instruction: string,
@@ -550,6 +784,16 @@ export function AgentChat({
       const currentFilesNow = getLatestFiles();
       const topIntent = detectIntent(trimmed, currentFilesNow.length > 0);
 
+      // -------- Native tool-calling mode (agents = same caps as Lovable IDE) --------
+      if (agentsSettings.useNativeTools) {
+        await runAgentToolLoop(trimmed, controller);
+        setStatusLine("");
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("lovable:agent-done"));
+        }
+        return;
+      }
+
       // ---------- Optional planning phase for big CREATION prompts only ----------
       // Don't plan a targeted modification — that's what makes the agent
       // rewrite the whole project step by step.
@@ -757,6 +1001,20 @@ function ChatMessage({ message }: { message: Msg }) {
         <div className="prose prose-invert prose-sm max-w-none prose-pre:my-2 prose-pre:bg-[var(--terminal-bg)] prose-code:text-primary">
           <ReactMarkdown>{text || "…"}</ReactMarkdown>
         </div>
+        {message.toolEvents && message.toolEvents.length > 0 && (
+          <div className="rounded-md border border-primary/30 bg-primary/5 p-2 text-[11px]">
+            <div className="mb-1 flex items-center gap-1 font-medium text-primary">
+              <Wrench className="h-3 w-3" /> {message.toolEvents.length} action{message.toolEvents.length > 1 ? "s" : ""} agent
+            </div>
+            <ul className="space-y-0.5 text-muted-foreground">
+              {message.toolEvents.map((ev, i) => (
+                <li key={i} className={ev.ok ? "" : "text-red-400"}>
+                  {ev.ok ? "✓" : "✗"} {ev.label}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         {actions.length > 0 && (
           <div
             className={cn(

@@ -217,7 +217,174 @@ function runScript(projectId, dir, script) {
 }
 
 // --- routes ---------------------------------------------------------------
-app.get("/api/health", (_req, res) => res.json({ ok: true, hasToken: !!TOKEN }));
+app.get("/api/health", (_req, res) => res.json({
+  ok: true,
+  hasToken: !!TOKEN,
+  // Advertise capabilities so the IDE knows which agent tools it can offer.
+  capabilities: ["run", "stop", "sync", "exec", "read-file", "list-files", "http-fetch"],
+}));
+
+/**
+ * Generic shell exec inside a project's workspace dir.
+ * Body: { projectId, command: string, cwd?: string, timeoutMs?: number }
+ * Returns: { exitCode, stdout, stderr, timedOut }
+ */
+app.post("/api/exec", checkAuth, async (req, res) => {
+  try {
+    const { projectId, command, cwd, timeoutMs } = req.body || {};
+    if (!projectId || typeof command !== "string" || !command.trim()) {
+      return res.status(400).json({ error: "projectId and command required" });
+    }
+    const dir = safeProjectDir(projectId);
+    await fsp.mkdir(dir, { recursive: true });
+    const finalCwd = cwd
+      ? path.join(dir, String(cwd).replace(/^[/\\]+/, ""))
+      : dir;
+    if (!finalCwd.startsWith(dir)) {
+      return res.status(400).json({ error: "cwd escapes workspace" });
+    }
+    const limit = Math.min(Math.max(parseInt(timeoutMs || "30000", 10), 1000), 120000);
+
+    pushLog(projectId, "system", `$ (agent) ${command}`);
+
+    const isWin = process.platform === "win32";
+    const shellCmd = isWin ? "cmd.exe" : "bash";
+    const shellArgs = isWin ? ["/c", command] : ["-lc", command];
+
+    const proc = spawn(shellCmd, shellArgs, {
+      cwd: finalCwd,
+      env: { ...process.env, FORCE_COLOR: "0" },
+      shell: false,
+    });
+
+    let stdout = "";
+    let stderr = "";
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      try { proc.kill("SIGKILL"); } catch (_) { /* */ }
+    }, limit);
+
+    proc.stdout.on("data", (b) => {
+      const s = b.toString();
+      stdout += s;
+      pushLog(projectId, "stdout", s);
+    });
+    proc.stderr.on("data", (b) => {
+      const s = b.toString();
+      stderr += s;
+      pushLog(projectId, "stderr", s);
+    });
+
+    proc.on("close", (code) => {
+      clearTimeout(timer);
+      // Cap output sizes so we don't blow up the IDE
+      const cap = (s) => (s.length > 20000 ? s.slice(0, 20000) + "\n…(truncated)" : s);
+      res.json({
+        ok: true,
+        exitCode: code,
+        stdout: cap(stdout),
+        stderr: cap(stderr),
+        timedOut,
+      });
+    });
+    proc.on("error", (e) => {
+      clearTimeout(timer);
+      res.status(500).json({ error: String(e?.message || e) });
+    });
+  } catch (e) {
+    res.status(500).json({ error: String(e?.message || e) });
+  }
+});
+
+/**
+ * Read a file from the workspace.
+ * Body: { projectId, path }
+ */
+app.post("/api/read-file", checkAuth, async (req, res) => {
+  try {
+    const { projectId, path: rel } = req.body || {};
+    if (!projectId || typeof rel !== "string") {
+      return res.status(400).json({ error: "projectId and path required" });
+    }
+    const dir = safeProjectDir(projectId);
+    const target = path.join(dir, rel.replace(/^[/\\]+/, ""));
+    if (!target.startsWith(dir)) return res.status(400).json({ error: "path escape" });
+    const content = await fsp.readFile(target, "utf8");
+    res.json({ ok: true, path: rel, content });
+  } catch (e) {
+    res.status(404).json({ error: String(e?.message || e) });
+  }
+});
+
+/**
+ * List files in the workspace (recursive, max 500).
+ * Body: { projectId, dir?: string }
+ */
+app.post("/api/list-files", checkAuth, async (req, res) => {
+  try {
+    const { projectId, dir: subdir } = req.body || {};
+    if (!projectId) return res.status(400).json({ error: "projectId required" });
+    const root = safeProjectDir(projectId);
+    const start = subdir
+      ? path.join(root, String(subdir).replace(/^[/\\]+/, ""))
+      : root;
+    if (!start.startsWith(root)) return res.status(400).json({ error: "path escape" });
+
+    const out = [];
+    const SKIP = new Set(["node_modules", ".git", "dist", "build", ".next", ".cache"]);
+    async function walk(d, rel) {
+      if (out.length >= 500) return;
+      let entries;
+      try { entries = await fsp.readdir(d, { withFileTypes: true }); }
+      catch { return; }
+      for (const e of entries) {
+        if (out.length >= 500) return;
+        if (SKIP.has(e.name)) continue;
+        const full = path.join(d, e.name);
+        const r = rel ? `${rel}/${e.name}` : e.name;
+        if (e.isDirectory()) {
+          out.push({ path: r, type: "dir" });
+          await walk(full, r);
+        } else if (e.isFile()) {
+          let size = 0;
+          try { size = (await fsp.stat(full)).size; } catch (_) { /* */ }
+          out.push({ path: r, type: "file", size });
+        }
+      }
+    }
+    await walk(start, "");
+    res.json({ ok: true, files: out });
+  } catch (e) {
+    res.status(500).json({ error: String(e?.message || e) });
+  }
+});
+
+/**
+ * HTTP test request from the runner machine. Useful for an agent to verify
+ * its own running app responds correctly.
+ * Body: { url, method?, headers?, body? }
+ */
+app.post("/api/http-fetch", checkAuth, async (req, res) => {
+  try {
+    const { url, method = "GET", headers = {}, body } = req.body || {};
+    if (typeof url !== "string" || !/^https?:\/\//i.test(url)) {
+      return res.status(400).json({ error: "valid http(s) url required" });
+    }
+    const r = await fetch(url, { method, headers, body });
+    const text = await r.text();
+    const cap = text.length > 20000 ? text.slice(0, 20000) + "\n…(truncated)" : text;
+    res.json({
+      ok: true,
+      status: r.status,
+      statusText: r.statusText,
+      headers: Object.fromEntries(r.headers.entries()),
+      body: cap,
+    });
+  } catch (e) {
+    res.status(500).json({ error: String(e?.message || e) });
+  }
+});
 
 app.post("/api/run", checkAuth, async (req, res) => {
   try {

@@ -280,6 +280,7 @@ function IdePage() {
           </div>
           <div className={cn("h-full", rightTab === "agent" ? "block" : "hidden")}>
             <AgentChat
+              projectId={project.id}
               files={project.files}
               activeFile={activeFile}
               onOpenSettings={() => setSettingsOpen(true)}

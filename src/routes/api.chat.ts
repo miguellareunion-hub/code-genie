@@ -3,13 +3,19 @@ import { createFileRoute } from "@tanstack/react-router";
 type AgentRole = "builder" | "fixer" | "planner";
 
 type ChatBody = {
-  messages: { role: "user" | "assistant" | "system"; content: string }[];
+  messages: { role: "user" | "assistant" | "system" | "tool"; content: string; tool_call_id?: string; tool_calls?: unknown }[];
   provider?: "lovable" | "openai";
   model?: string;
   openaiApiKey?: string;
   role?: AgentRole;
   /** Optional custom system prompt that overrides the default for this role. */
   systemPromptOverride?: string;
+  /** Tool-calling support — when present, the model can emit structured tool_calls. */
+  tools?: unknown[];
+  /** "auto" | "none" | { type:"function", function:{ name } } */
+  tool_choice?: unknown;
+  /** When true, return a single non-streamed JSON response (needed for tool-call loops). */
+  nonStreaming?: boolean;
 };
 
 const BASE_RULES = `# Environment constraints
@@ -119,6 +125,9 @@ export const Route = (createFileRoute as any)("/api/chat")({
             openaiApiKey,
             role = "builder",
             systemPromptOverride,
+            tools,
+            tool_choice,
+            nonStreaming,
           } = body;
 
           let url: string;
@@ -149,17 +158,24 @@ export const Route = (createFileRoute as any)("/api/chat")({
               ? systemPromptOverride
               : getSystemPrompt(role);
 
+          const useStreaming = !nonStreaming;
+          const payload: Record<string, unknown> = {
+            model: chosenModel,
+            stream: useStreaming,
+            messages: [{ role: "system", content: systemPrompt }, ...messages],
+          };
+          if (Array.isArray(tools) && tools.length > 0) {
+            payload.tools = tools;
+            if (tool_choice !== undefined) payload.tool_choice = tool_choice;
+          }
+
           const upstream = await fetch(url, {
             method: "POST",
             headers: {
               Authorization: `Bearer ${apiKey}`,
               "Content-Type": "application/json",
             },
-            body: JSON.stringify({
-              model: chosenModel,
-              stream: true,
-              messages: [{ role: "system", content: systemPrompt }, ...messages],
-            }),
+            body: JSON.stringify(payload),
           });
 
           if (!upstream.ok) {
@@ -185,8 +201,15 @@ export const Route = (createFileRoute as any)("/api/chat")({
             return jsonError(`AI provider error (${upstream.status})`, 500);
           }
 
-          return new Response(upstream.body, {
-            headers: { "Content-Type": "text/event-stream" },
+          if (useStreaming) {
+            return new Response(upstream.body, {
+              headers: { "Content-Type": "text/event-stream" },
+            });
+          }
+          // Non-streaming: forward the full JSON response body for tool-call loops.
+          const respText = await upstream.text();
+          return new Response(respText, {
+            headers: { "Content-Type": "application/json" },
           });
         } catch (e) {
           console.error("/api/chat error", e);
