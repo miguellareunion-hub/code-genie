@@ -269,6 +269,19 @@ export function AgentChat({
     controller: AbortController,
     stepLabel?: string,
   ): Promise<boolean> => {
+    const agentsSettings = loadAgentsSettings();
+    if (!agentsSettings.builder.enabled) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content:
+            "⚠️ Le Builder est désactivé. Active-le dans **Agents** pour générer du code.",
+        },
+      ]);
+      return false;
+    }
+
     clearRuntimeErrors();
     const prefix = stepLabel ? `${stepLabel}\n\n` : "";
     const builderUserMsg: Msg = {
@@ -288,9 +301,13 @@ export function AgentChat({
     }
     if (builderResult.actions.length > 0) onSwitchToPreview?.();
 
-    // Fixer loop
+    // Fixer loop (skipped entirely if disabled or maxFixIterations === 0)
+    if (!agentsSettings.fixer.enabled || agentsSettings.maxFixIterations <= 0) {
+      return true;
+    }
+
     let lastAssistantText = builderResult.text;
-    for (let iter = 1; iter <= MAX_FIX_ITERATIONS; iter++) {
+    for (let iter = 1; iter <= agentsSettings.maxFixIterations; iter++) {
       if (controller.signal.aborted) break;
       setStatusLine(`Running project & checking for errors (pass ${iter})…`);
       const checkpoint = Date.now() - 50;
@@ -345,9 +362,13 @@ export function AgentChat({
     abortRef.current = controller;
 
     try {
+      const agentsSettings = loadAgentsSettings();
       // ---------- Optional planning phase for big prompts ----------
       let plan: PlanStep[] | null = null;
-      if (shouldPlan(trimmed)) {
+      if (
+        agentsSettings.planner.enabled &&
+        shouldPlan(trimmed, agentsSettings.plannerMinChars)
+      ) {
         setStatusLine("Planner agent is breaking your request into steps…");
         const plannerHistory: Msg[] = [
           {
