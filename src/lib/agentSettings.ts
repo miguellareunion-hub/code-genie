@@ -91,7 +91,7 @@ Read the project produced by the Builder and improve code quality WITHOUT changi
     emoji: "♿",
     description: "Vérifie alt, labels, contraste, rôles ARIA, navigation clavier.",
     role: "fixer",
-    enabled: false,
+    enabled: true,
     systemPrompt: `You are the ACCESSIBILITY (a11y) agent inside Lovable IDE.
 Audit the current HTML/CSS for accessibility problems and fix them:
 - Missing alt on <img>, missing <label> on form fields, missing button text.
