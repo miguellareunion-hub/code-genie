@@ -103,14 +103,40 @@ export function RunnerPanel({ projectId, files }: Props) {
   // Auto-run when the agent finishes a cycle (if URL + token are configured).
   useEffect(() => {
     const onAgentDone = () => {
+      setAgentActivity(null);
       if (!settings.token || !settings.url) return;
       // Fire and forget — handleRun reads the latest files via closure.
       void handleRun();
     };
+    const onAgentStart = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ label?: string }>).detail;
+      setAgentActivity(detail?.label ?? "Agent en cours…");
+    };
+    const onAgentStatus = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ label?: string }>).detail;
+      if (detail?.label) setAgentActivity(detail.label);
+    };
+    const onAgentFileWrite = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ path?: string }>).detail;
+      if (detail?.path) {
+        setLogs((p) => [
+          ...p.slice(-1999),
+          { level: "system", line: `✎ Agent a écrit ${detail.path}`, ts: Date.now() },
+        ]);
+      }
+    };
     window.addEventListener("lovable:agent-done", onAgentDone);
-    return () => window.removeEventListener("lovable:agent-done", onAgentDone);
+    window.addEventListener("lovable:agent-start", onAgentStart);
+    window.addEventListener("lovable:agent-status", onAgentStatus);
+    window.addEventListener("lovable:agent-file-write", onAgentFileWrite);
+    return () => {
+      window.removeEventListener("lovable:agent-done", onAgentDone);
+      window.removeEventListener("lovable:agent-start", onAgentStart);
+      window.removeEventListener("lovable:agent-status", onAgentStatus);
+      window.removeEventListener("lovable:agent-file-write", onAgentFileWrite);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings.token, settings.url, files, projectId, settings.script]);
+  }, [settings.token, settings.url, projectId, settings.script]);
 
   const checkHealth = useCallback(async () => {
     setHealthMsg("…");
