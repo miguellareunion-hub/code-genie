@@ -65,7 +65,7 @@ export const Route = createFileRoute("/api/chat")({
       POST: async ({ request }: { request: Request }) => {
         try {
           const body = (await request.json()) as ChatBody;
-          const { messages, provider = "lovable", model, openaiApiKey } = body;
+          const { messages, provider = "lovable", model, openaiApiKey, role = "builder" } = body;
 
           let url: string;
           let apiKey: string | undefined;
@@ -99,7 +99,7 @@ export const Route = createFileRoute("/api/chat")({
             body: JSON.stringify({
               model: chosenModel,
               stream: true,
-              messages: [{ role: "system", content: SYSTEM_PROMPT }, ...messages],
+              messages: [{ role: "system", content: getSystemPrompt(role) }, ...messages],
             }),
           });
 
