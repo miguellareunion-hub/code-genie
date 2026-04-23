@@ -18,7 +18,6 @@ import { SettingsDialog } from "@/components/ide/SettingsDialog";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/ide/$projectId")({
-  ssr: false,
   head: () => ({
     meta: [
       { title: "Editor — Lovable IDE" },
