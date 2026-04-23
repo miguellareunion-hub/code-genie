@@ -203,6 +203,14 @@ function IdePage() {
             Agents
           </button>
           <button
+            onClick={handleDownloadZip}
+            title="Télécharger le projet en .zip"
+            className="flex items-center gap-1.5 rounded px-2.5 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <Download className="h-3.5 w-3.5" />
+            ZIP
+          </button>
+          <button
             onClick={() => setSettingsOpen(true)}
             title="AI settings"
             className="flex items-center gap-1.5 rounded px-2.5 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
