@@ -784,6 +784,16 @@ Workflow:
       const currentFilesNow = getLatestFiles();
       const topIntent = detectIntent(trimmed, currentFilesNow.length > 0);
 
+      // -------- Native tool-calling mode (agents = same caps as Lovable IDE) --------
+      if (agentsSettings.useNativeTools) {
+        await runAgentToolLoop(trimmed, controller);
+        setStatusLine("");
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("lovable:agent-done"));
+        }
+        return;
+      }
+
       // ---------- Optional planning phase for big CREATION prompts only ----------
       // Don't plan a targeted modification — that's what makes the agent
       // rewrite the whole project step by step.
