@@ -8,7 +8,9 @@ import {
   Eye,
   Settings as SettingsIcon,
   Bot,
+  Download,
 } from "lucide-react";
+import JSZip from "jszip";
 import { useProject } from "@/hooks/useProject";
 import { FileExplorer } from "@/components/ide/FileExplorer";
 import { CodeEditor } from "@/components/ide/CodeEditor";
