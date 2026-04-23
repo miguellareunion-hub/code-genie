@@ -111,9 +111,19 @@ export function AgentChat({
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [statusLine, setStatusLine] = useState<string>("");
+  const [statusLine, setStatusLineRaw] = useState<string>("");
   const abortRef = useRef<AbortController | null>(null);
   const sendRef = useRef<((text: string) => void) | null>(null);
+
+  /** Wrap setStatusLine so the RunnerPanel can show what the agent is doing in real time. */
+  const setStatusLine = (s: string) => {
+    setStatusLineRaw(s);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("lovable:agent-status", { detail: { label: s } }),
+      );
+    }
+  };
 
   // Listen for "Fix this error" buttons in the RunnerPanel (and any other source).
   useEffect(() => {
