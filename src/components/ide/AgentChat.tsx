@@ -172,10 +172,17 @@ export function AgentChat({
 
     const lmStudioSystemPrompt = override.length > 0 ? override : builtInLmStudioPrompt;
 
+    const lmStudioHeaders: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (isLmStudio && settings.lmstudioApiKey.trim()) {
+      lmStudioHeaders["Authorization"] = `Bearer ${settings.lmstudioApiKey.trim()}`;
+    }
+
     const resp = isLmStudio
       ? await fetch(`${settings.lmstudioBaseUrl.replace(/\/$/, "")}/chat/completions`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: lmStudioHeaders,
           body: JSON.stringify({
             model: settings.lmstudioModel,
             stream: true,
@@ -202,10 +209,18 @@ export function AgentChat({
         });
 
     if (!resp.ok || !resp.body) {
-      let msg = "Failed to reach the AI agent.";
+      let msg = `Failed to reach the AI agent (HTTP ${resp.status}).`;
       try {
-        const j = await resp.json();
-        if (j?.error) msg = j.error;
+        const text = await resp.text();
+        try {
+          const j = JSON.parse(text);
+          const errVal = j?.error ?? j?.message ?? j?.error?.message;
+          if (typeof errVal === "string") msg = errVal;
+          else if (errVal && typeof errVal === "object") msg = JSON.stringify(errVal);
+          else if (text) msg = text.slice(0, 300);
+        } catch {
+          if (text) msg = text.slice(0, 300);
+        }
       } catch {}
       upsert(`⚠️ ${msg}`);
       return null;
