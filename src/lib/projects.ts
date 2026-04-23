@@ -1,3 +1,5 @@
+import { compressToUTF16, decompressFromUTF16 } from "lz-string";
+
 export type FileNode = {
   id: string;
   name: string;
@@ -43,14 +45,25 @@ export const loadProjects = (): Project[] => {
   if (typeof window === "undefined") return [];
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as Project[]) : [];
+    if (!raw) return [];
+
+    const decompressed = decompressFromUTF16(raw);
+    if (decompressed) return JSON.parse(decompressed) as Project[];
+
+    return JSON.parse(raw) as Project[];
   } catch {
     return [];
   }
 };
 
 export const saveProjects = (projects: Project[]) => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
+  try {
+    localStorage.setItem(STORAGE_KEY, compressToUTF16(JSON.stringify(projects)));
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unable to save the project in browser storage.";
+    throw new Error(`Project storage is full. Reduce file size or split the generation into smaller steps. ${message}`);
+  }
 };
 
 export const getProject = (id: string): Project | undefined =>
