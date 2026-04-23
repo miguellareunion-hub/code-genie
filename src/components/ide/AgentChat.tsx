@@ -1001,6 +1001,20 @@ function ChatMessage({ message }: { message: Msg }) {
         <div className="prose prose-invert prose-sm max-w-none prose-pre:my-2 prose-pre:bg-[var(--terminal-bg)] prose-code:text-primary">
           <ReactMarkdown>{text || "…"}</ReactMarkdown>
         </div>
+        {message.toolEvents && message.toolEvents.length > 0 && (
+          <div className="rounded-md border border-primary/30 bg-primary/5 p-2 text-[11px]">
+            <div className="mb-1 flex items-center gap-1 font-medium text-primary">
+              <Wrench className="h-3 w-3" /> {message.toolEvents.length} action{message.toolEvents.length > 1 ? "s" : ""} agent
+            </div>
+            <ul className="space-y-0.5 text-muted-foreground">
+              {message.toolEvents.map((ev, i) => (
+                <li key={i} className={ev.ok ? "" : "text-red-400"}>
+                  {ev.ok ? "✓" : "✗"} {ev.label}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         {actions.length > 0 && (
           <div
             className={cn(
