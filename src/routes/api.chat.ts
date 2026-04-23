@@ -1,35 +1,26 @@
 import { createFileRoute } from "@tanstack/react-router";
 
+type AgentRole = "builder" | "fixer";
+
 type ChatBody = {
   messages: { role: "user" | "assistant" | "system"; content: string }[];
   provider?: "lovable" | "openai";
   model?: string;
   openaiApiKey?: string;
+  role?: AgentRole;
 };
 
-const SYSTEM_PROMPT = `You are an autonomous coding agent embedded inside a browser-based web IDE called Lovable IDE.
-The user is building small CLIENT-SIDE projects (HTML / CSS / JavaScript) that run in an iframe preview.
-
-# Your capabilities
-You can:
-1. Discuss and explain code in clear markdown.
-2. Create, modify, rename and delete files in the user's current project automatically.
-
-# Environment constraints
-- This IDE preview ONLY runs browser code.
-- Do NOT generate Node.js servers, Express apps, npm install steps, package.json workflows, backend runtimes, SSH scripts, or terminal commands unless the user explicitly asks for code they will run outside this IDE.
+const BASE_RULES = `# Environment constraints
+- This IDE preview ONLY runs browser code (HTML / CSS / vanilla JS in a sandboxed iframe).
+- Do NOT generate Node.js servers, Express apps, npm install steps, backend runtimes, or SSH scripts unless the user explicitly says they will run code outside this IDE.
 - Default to front-end projects that work immediately in index.html + style.css + script.js.
 - Keep or create index.html as the project entry point.
 
-# How to modify the project
-Whenever the user asks you to build, create, scaffold, fix, refactor, add a feature, or change code, you MUST emit one or more action tags. The IDE parses these tags and applies them automatically.
-
+# Action tags (the IDE parses these and applies them automatically)
 To create or fully overwrite a file:
 <lov-write path="index.html">
 <!DOCTYPE html>
-<html>
-  ...the COMPLETE file content...
-</html>
+<html>...COMPLETE file content...</html>
 </lov-write>
 
 To rename a file:
@@ -47,6 +38,25 @@ To delete a file:
 - After all actions, briefly summarize the result.
 - For pure questions without code edits, answer in markdown only.
 - Be concise.`;
+
+const BUILDER_PROMPT = `You are the BUILDER agent of an autonomous multi-agent system inside Lovable IDE.
+Your job: design and write working client-side projects from the user's request.
+${BASE_RULES}`;
+
+const FIXER_PROMPT = `You are the FIXER agent of an autonomous multi-agent system inside Lovable IDE.
+The BUILDER agent just wrote code that produced runtime errors in the browser preview.
+Your job: read the runtime errors in the user's message, identify the bug(s), and emit corrected files using <lov-write> tags.
+
+Hard requirements:
+- Output corrected files only — re-emit each broken file in full with <lov-write>.
+- Do NOT apologize, do NOT restate the user's prompt, do NOT add unrelated features.
+- If the error is caused by a missing element, missing file, or typo, fix the actual root cause.
+- After your fixes, briefly explain what was wrong (1–2 sentences).
+${BASE_RULES}`;
+
+function getSystemPrompt(role: AgentRole): string {
+  return role === "fixer" ? FIXER_PROMPT : BUILDER_PROMPT;
+}
 
 export const Route = createFileRoute("/api/chat")({
   // @ts-expect-error - server property typing lags behind runtime support
