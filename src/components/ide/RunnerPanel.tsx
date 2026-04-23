@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Play, Square, Loader2, ExternalLink, Settings as SettingsIcon, Trash2, Server, Wrench } from "lucide-react";
+import { Play, Square, Loader2, ExternalLink, Settings as SettingsIcon, Trash2, Server, Wrench, RefreshCw, Sparkles } from "lucide-react";
 import type { FileNode } from "@/lib/projects";
 import { loadRunnerSettings, saveRunnerSettings, type RunnerSettings } from "@/lib/runnerSettings";
 import { pushRuntimeError } from "@/lib/runtimeErrors";
