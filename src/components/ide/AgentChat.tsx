@@ -162,6 +162,7 @@ export function AgentChat({
   };
 
   const applyActions = (actions: AgentAction[]) => {
+    const failures: string[] = [];
     for (const a of actions) {
       try {
         if (a.type === "write") onWriteFile(a.path, a.content);
@@ -169,8 +170,17 @@ export function AgentChat({
         else if (a.type === "delete") onDeleteFile(a.path);
       } catch (e) {
         console.error("Failed to apply agent action", a, e);
+        const message = e instanceof Error ? e.message : "Unknown write error";
+        failures.push(
+          a.type === "write"
+            ? `Impossible d'écrire ${a.path}: ${message}`
+            : a.type === "rename"
+              ? `Impossible de renommer ${a.from}: ${message}`
+              : `Impossible de supprimer ${a.path}: ${message}`,
+        );
       }
     }
+    return failures;
   };
 
   /** Wait for the iframe to render and collect any runtime errors that occur. */
@@ -206,7 +216,14 @@ export function AgentChat({
       ];
       const builderResult = await runAgentTurn("builder", builderHistory, controller.signal);
       if (!builderResult) return;
-      applyActions(builderResult.actions);
+      const builderFailures = applyActions(builderResult.actions);
+      if (builderFailures.length > 0) {
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: `⚠️ ${builderFailures.join("\n")}` },
+        ]);
+        return;
+      }
       if (builderResult.actions.length > 0) onSwitchToPreview?.();
 
       // ---------- Fixer loop ----------
@@ -243,7 +260,14 @@ export function AgentChat({
         ];
         const fixerResult = await runAgentTurn("fixer", fixerHistory, controller.signal);
         if (!fixerResult) break;
-        applyActions(fixerResult.actions);
+        const fixerFailures = applyActions(fixerResult.actions);
+        if (fixerFailures.length > 0) {
+          setMessages((prev) => [
+            ...prev,
+            { role: "assistant", content: `⚠️ ${fixerFailures.join("\n")}` },
+          ]);
+          break;
+        }
         lastAssistantText = fixerResult.text;
         clearRuntimeErrors();
       }
