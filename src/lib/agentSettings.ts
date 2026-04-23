@@ -77,7 +77,7 @@ The Builder just produced a working project. Your job: make it BEAUTIFUL.
     emoji: "🧹",
     description: "Nettoie le code : nommage, fonctions trop longues, duplication.",
     role: "builder",
-    enabled: false,
+    enabled: true,
     systemPrompt: `You are the REFACTORER agent inside Lovable IDE.
 Read the project produced by the Builder and improve code quality WITHOUT changing behaviour.
 - Split functions > 40 lines, give clearer names, remove dead code and duplication.
