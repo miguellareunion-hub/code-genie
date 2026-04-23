@@ -20,7 +20,52 @@ import {
   type RuntimeError,
 } from "@/lib/runtimeErrors";
 
-type AgentRole = "builder" | "fixer";
+type AgentRole = "builder" | "fixer" | "planner";
+
+type PlanStep = { title: string; instruction: string };
+
+/** Heuristic: should we run the planner before the builder? */
+function shouldPlan(prompt: string): boolean {
+  const t = prompt.trim();
+  if (t.length > 280) return true;
+  // Multi-line bulleted/numbered prompts
+  const lines = t.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  if (lines.length >= 4) return true;
+  const bulletLines = lines.filter((l) => /^\s*([-*•]|\d+[.)])\s+/.test(l)).length;
+  if (bulletLines >= 3) return true;
+  return false;
+}
+
+/** Try to extract { steps: [...] } from a (possibly noisy) planner reply. */
+function extractPlan(raw: string): PlanStep[] | null {
+  // Strip markdown code fences if any
+  const cleaned = raw.replace(/```(?:json)?/gi, "").replace(/```/g, "").trim();
+  // Find first { ... last }
+  const first = cleaned.indexOf("{");
+  const last = cleaned.lastIndexOf("}");
+  if (first === -1 || last === -1 || last <= first) return null;
+  try {
+    const obj = JSON.parse(cleaned.slice(first, last + 1));
+    if (!obj || !Array.isArray(obj.steps)) return null;
+    const steps: PlanStep[] = obj.steps
+      .map((s: unknown) => {
+        if (typeof s === "string") return { title: s, instruction: s };
+        if (s && typeof s === "object") {
+          const o = s as Record<string, unknown>;
+          const title = String(o.title ?? o.name ?? o.instruction ?? "");
+          const instruction = String(o.instruction ?? o.description ?? o.title ?? "");
+          if (!instruction) return null;
+          return { title: title || instruction.slice(0, 40), instruction };
+        }
+        return null;
+      })
+      .filter((x: PlanStep | null): x is PlanStep => x !== null)
+      .slice(0, 6);
+    return steps.length > 0 ? steps : null;
+  } catch {
+    return null;
+  }
+}
 
 type Msg = {
   role: "user" | "assistant";
