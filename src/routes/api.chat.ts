@@ -87,7 +87,9 @@ function getSystemPrompt(role: AgentRole): string {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const Route = (createFileRoute as any)("/api/chat")({
-  POST: async ({ request }: { request: Request }) => {
+  server: {
+    handlers: {
+      POST: async ({ request }: { request: Request }) => {
         try {
           const body = (await request.json()) as ChatBody;
           const {
@@ -170,6 +172,8 @@ export const Route = (createFileRoute as any)("/api/chat")({
           console.error("/api/chat error", e);
           return jsonError(e instanceof Error ? e.message : "Unknown error", 500);
         }
+      },
+    },
   },
 });
 

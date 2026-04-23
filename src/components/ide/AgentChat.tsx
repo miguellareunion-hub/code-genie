@@ -514,6 +514,10 @@ export function AgentChat({
       }
 
       setStatusLine("");
+      // Notify the runner panel that the agent finished a cycle so it can auto-restart.
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("lovable:agent-done"));
+      }
     } catch (err) {
       if ((err as Error).name !== "AbortError") {
         setMessages((prev) => [
