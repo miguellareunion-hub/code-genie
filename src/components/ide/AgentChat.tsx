@@ -113,6 +113,19 @@ export function AgentChat({
   const [loading, setLoading] = useState(false);
   const [statusLine, setStatusLine] = useState<string>("");
   const abortRef = useRef<AbortController | null>(null);
+  const sendRef = useRef<((text: string) => void) | null>(null);
+
+  // Listen for "Fix this error" buttons in the RunnerPanel (and any other source).
+  useEffect(() => {
+    const onFixError = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ error: string }>).detail;
+      if (!detail?.error || !sendRef.current) return;
+      const prompt = `Le Node Runner vient de produire cette erreur :\n\n\`\`\`\n${detail.error}\n\`\`\`\n\nIdentifie la cause et corrige les fichiers concernés.`;
+      sendRef.current(prompt);
+    };
+    window.addEventListener("lovable:fix-runner-error", onFixError);
+    return () => window.removeEventListener("lovable:fix-runner-error", onFixError);
+  }, []);
 
   const buildContext = (currentFiles: FileNode[], openName?: string) =>
     `Project files (current):\n${
