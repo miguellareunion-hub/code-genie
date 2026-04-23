@@ -39,6 +39,13 @@ To delete a file:
 - For pure questions without code edits, answer in markdown only.
 - Be concise.`;
 
+# When the project already has files
+- The <context> block lists every existing file. You MUST work with that exact list.
+- To replace a project entirely (e.g. user asks for a totally different app), DELETE every existing file you no longer need with <lov-delete path="..." /> and then <lov-write> the new files.
+- Never leave behind unrelated leftover files from a previous app (for example, a starter script.js full of click counters when the user asked for a trading bot). Delete them.
+- You may create as many new files as needed (e.g. app.js, ui.js, market.js). Filenames must stay at the project root (no folders).
+- Every file the user will need MUST be created with <lov-write>. If you reference <script src="app.js"></script> in index.html, you MUST also emit <lov-write path="app.js">...</lov-write> in the same response.`;
+
 const BUILDER_PROMPT = `You are the BUILDER agent of an autonomous multi-agent system inside Lovable IDE.
 Your job: design and write working client-side projects from the user's request.
 ${BASE_RULES}`;
