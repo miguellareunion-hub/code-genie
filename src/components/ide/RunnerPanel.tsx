@@ -287,16 +287,30 @@ export function RunnerPanel({ projectId, files }: Props) {
                 Logs du serveur Node apparaîtront ici. Configure URL + token, puis clique <strong>Run</strong>.
               </p>
             ) : (
-              logs.map((l, i) => (
-                <div key={i} className={
-                  l.level === "stderr" ? "text-red-400" :
-                  l.level === "system" ? "text-emerald-300" :
-                  "text-foreground/90"
-                }>
-                  <span className="opacity-50">[{new Date(l.ts).toLocaleTimeString([], { hour12: false })}]</span>{" "}
-                  <span className="whitespace-pre-wrap">{l.line}</span>
-                </div>
-              ))
+              logs.map((l, i) => {
+                const fixable = l.level === "stderr" && isLikelyError(l.line);
+                return (
+                  <div key={i} className={
+                    "group flex items-start gap-1 " + (
+                      l.level === "stderr" ? "text-red-400" :
+                      l.level === "system" ? "text-emerald-300" :
+                      "text-foreground/90"
+                    )
+                  }>
+                    <span className="opacity-50 shrink-0">[{new Date(l.ts).toLocaleTimeString([], { hour12: false })}]</span>
+                    <span className="whitespace-pre-wrap flex-1">{l.line}</span>
+                    {fixable && (
+                      <button
+                        onClick={() => sendToFixer(l.line)}
+                        title="Demander au Fixer agent de corriger cette erreur"
+                        className="shrink-0 rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] text-amber-300 opacity-0 transition group-hover:opacity-100 hover:bg-amber-500/40"
+                      >
+                        <Wrench className="inline h-2.5 w-2.5" /> Fix
+                      </button>
+                    )}
+                  </div>
+                );
+              })
             )}
           </div>
         </div>
