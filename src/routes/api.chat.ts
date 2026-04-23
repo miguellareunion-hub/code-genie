@@ -170,7 +170,8 @@ export const Route = createFileRoute("/api/chat")({
         } catch (e) {
           console.error("/api/chat error", e);
           return jsonError(e instanceof Error ? e.message : "Unknown error", 500);
-        }
+      },
+    },
   },
 });
 
