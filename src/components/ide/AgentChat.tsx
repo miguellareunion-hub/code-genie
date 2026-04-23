@@ -26,9 +26,9 @@ type AgentRole = "builder" | "fixer" | "planner";
 type PlanStep = { title: string; instruction: string };
 
 /** Heuristic: should we run the planner before the builder? */
-function shouldPlan(prompt: string): boolean {
+function shouldPlan(prompt: string, minChars: number): boolean {
   const t = prompt.trim();
-  if (t.length > 280) return true;
+  if (t.length > minChars) return true;
   // Multi-line bulleted/numbered prompts
   const lines = t.split(/\r?\n/).filter((l) => l.trim().length > 0);
   if (lines.length >= 4) return true;
@@ -94,7 +94,6 @@ const SUGGESTIONS = [
   "Add a dark mode toggle",
 ];
 
-const MAX_FIX_ITERATIONS = 3;
 /** Delay after applying files so the iframe runs and reports any errors. */
 const RUNTIME_OBSERVE_MS = 1500;
 
