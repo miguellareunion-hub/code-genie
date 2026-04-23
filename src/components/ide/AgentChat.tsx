@@ -128,12 +128,21 @@ export function AgentChat({
     role: AgentRole,
     apiMessages: Msg[],
     signal: AbortSignal,
+    /** Optional explicit prompt override (used by custom agents). */
+    explicitOverride?: string,
+    /** Optional label shown in chat (e.g. custom agent name). */
+    displayLabel?: string,
   ): Promise<{ text: string; actions: AgentAction[] } | null> => {
     let assistantSoFar = "";
     setMessages((prev) => [
       ...prev,
-      { role: "assistant", content: "", agentRole: role },
+      {
+        role: "assistant",
+        content: displayLabel ? `*${displayLabel}*\n\n` : "",
+        agentRole: role,
+      },
     ]);
+    if (displayLabel) assistantSoFar = `*${displayLabel}*\n\n`;
 
     const upsert = (chunk: string) => {
       assistantSoFar += chunk;
