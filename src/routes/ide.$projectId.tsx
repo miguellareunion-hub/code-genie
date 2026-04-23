@@ -237,6 +237,9 @@ function IdePage() {
               files={project.files}
               activeFile={activeFile}
               onOpenSettings={() => setSettingsOpen(true)}
+              onWriteFile={writeFileByPath}
+              onRenameFile={renameFileByPath}
+              onDeleteFile={deleteFileByPath}
             />
           </div>
         </aside>
