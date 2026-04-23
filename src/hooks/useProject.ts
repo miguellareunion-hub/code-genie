@@ -11,14 +11,19 @@ import {
 export function useProject(projectId: string | undefined) {
   const [project, setProject] = useState<Project | null>(null);
   const [activeFileId, setActiveFileId] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    if (!projectId) return;
+    if (!projectId) {
+      setLoaded(true);
+      return;
+    }
     const p = getProject(projectId);
     if (p) {
       setProject(p);
       setActiveFileId(p.files[0]?.id ?? null);
     }
+    setLoaded(true);
   }, [projectId]);
 
   const persist = useCallback((next: Project) => {
