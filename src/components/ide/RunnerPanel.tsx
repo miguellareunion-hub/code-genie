@@ -202,6 +202,50 @@ export function RunnerPanel({ projectId, files }: Props) {
     }
   }, [baseUrl, projectId, settings.token]);
 
+  const handleRefreshPreview = useCallback(() => {
+    setPreviewKey((k) => k + 1);
+  }, []);
+
+  // Hot-sync: while the runner is up AND autoSync is on, re-send files to the
+  // runner whenever they change. Debounced so rapid agent edits coalesce.
+  useEffect(() => {
+    if (!autoSync) return;
+    if (!settings.token || !settings.url) return;
+    if (status !== "running" && status !== "installing") return;
+    const t = window.setTimeout(async () => {
+      try {
+        const payload = {
+          projectId,
+          script: settings.script || "dev",
+          files: filesRef.current.map((f) => ({ path: f.name, content: f.content })),
+        };
+        await fetch(`${baseUrl}/api/sync`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${settings.token}`,
+          },
+          body: JSON.stringify(payload),
+        }).catch(() => {
+          // /api/sync may not exist on older runner-server; fall back to /api/run
+          return fetch(`${baseUrl}/api/run`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${settings.token}`,
+            },
+            body: JSON.stringify(payload),
+          });
+        });
+        setLastSyncedAt(Date.now());
+        setPreviewKey((k) => k + 1);
+      } catch {
+        /* ignore — logs already capture errors */
+      }
+    }, 600);
+    return () => window.clearTimeout(t);
+  }, [files, autoSync, status, baseUrl, projectId, settings.script, settings.token, settings.url]);
+
   const isRunning = status === "running" || status === "installing" || status === "starting";
 
   return (
