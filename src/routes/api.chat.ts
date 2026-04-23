@@ -125,6 +125,9 @@ export const Route = (createFileRoute as any)("/api/chat")({
             openaiApiKey,
             role = "builder",
             systemPromptOverride,
+            tools,
+            tool_choice,
+            nonStreaming,
           } = body;
 
           let url: string;
@@ -155,17 +158,24 @@ export const Route = (createFileRoute as any)("/api/chat")({
               ? systemPromptOverride
               : getSystemPrompt(role);
 
+          const useStreaming = !nonStreaming;
+          const payload: Record<string, unknown> = {
+            model: chosenModel,
+            stream: useStreaming,
+            messages: [{ role: "system", content: systemPrompt }, ...messages],
+          };
+          if (Array.isArray(tools) && tools.length > 0) {
+            payload.tools = tools;
+            if (tool_choice !== undefined) payload.tool_choice = tool_choice;
+          }
+
           const upstream = await fetch(url, {
             method: "POST",
             headers: {
               Authorization: `Bearer ${apiKey}`,
               "Content-Type": "application/json",
             },
-            body: JSON.stringify({
-              model: chosenModel,
-              stream: true,
-              messages: [{ role: "system", content: systemPrompt }, ...messages],
-            }),
+            body: JSON.stringify(payload),
           });
 
           if (!upstream.ok) {
@@ -191,8 +201,15 @@ export const Route = (createFileRoute as any)("/api/chat")({
             return jsonError(`AI provider error (${upstream.status})`, 500);
           }
 
-          return new Response(upstream.body, {
-            headers: { "Content-Type": "text/event-stream" },
+          if (useStreaming) {
+            return new Response(upstream.body, {
+              headers: { "Content-Type": "text/event-stream" },
+            });
+          }
+          // Non-streaming: forward the full JSON response body for tool-call loops.
+          const respText = await upstream.text();
+          return new Response(respText, {
+            headers: { "Content-Type": "application/json" },
           });
         } catch (e) {
           console.error("/api/chat error", e);
