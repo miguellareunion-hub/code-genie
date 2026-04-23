@@ -44,8 +44,13 @@ export function RunnerPanel({ projectId, files }: Props) {
   const [busy, setBusy] = useState(false);
   const [previewKey, setPreviewKey] = useState(0);
   const [healthMsg, setHealthMsg] = useState<string | null>(null);
+  const [agentActivity, setAgentActivity] = useState<string | null>(null);
+  const [autoSync, setAutoSync] = useState(true);
+  const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
+  const filesRef = useRef(files);
+  filesRef.current = files;
 
   const baseUrl = settings.url.replace(/\/+$/, "");
   const previewUrl = `${baseUrl}/preview/${encodeURIComponent(projectId)}/`;
