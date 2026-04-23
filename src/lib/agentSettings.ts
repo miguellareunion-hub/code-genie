@@ -28,6 +28,15 @@ export type AgentsSettings = {
   plannerMinChars: number;
   /** User-created custom agents. */
   customAgents: CustomAgent[];
+  /**
+   * Native tool calling: when true, agents use OpenAI-style function calls
+   * (read_file, write_file, exec_shell, web_search…) and can run multi-step
+   * autonomous loops just like the IDE meta-agent. When false, fall back to
+   * the legacy <lov-write> XML tag pipeline.
+   */
+  useNativeTools: boolean;
+  /** Hard cap on tool-call iterations per user message (safety net). */
+  maxToolIterations: number;
 };
 
 const STORAGE_KEY = "lovable-ide:agents-settings";
@@ -170,6 +179,8 @@ export const DEFAULT_AGENTS_SETTINGS: AgentsSettings = {
   maxFixIterations: 5,
   plannerMinChars: 280,
   customAgents: PRESET_CUSTOM_AGENTS,
+  useNativeTools: true,
+  maxToolIterations: 24,
 };
 
 export function loadAgentsSettings(): AgentsSettings {
