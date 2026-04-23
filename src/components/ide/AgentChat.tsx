@@ -567,6 +567,9 @@ export function AgentChat({
     }
   };
 
+  // Keep the latest send() reachable from event listeners (Fix-from-runner button).
+  sendRef.current = send;
+
   return (
     <div className="flex h-full flex-col bg-[var(--panel-bg)]">
       <div className="flex items-center justify-between border-b border-border bg-[var(--sidebar-bg)] px-3 py-1.5">
