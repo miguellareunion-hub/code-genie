@@ -63,18 +63,24 @@ export function SettingsDialog({ open, onClose, onSaved }: Props) {
             <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-muted-foreground">
               Provider
             </label>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               <ProviderCard
                 active={settings.provider === "lovable"}
                 onClick={() => update("provider", "lovable" as AIProvider)}
                 title="Lovable AI"
-                desc="Pre-configured gateway. Free credits included."
+                desc="Gateway préconfiguré. Crédits gratuits inclus."
               />
               <ProviderCard
                 active={settings.provider === "openai"}
                 onClick={() => update("provider", "openai" as AIProvider)}
                 title="OpenAI"
-                desc="Use your own OpenAI API key."
+                desc="Utilise ta propre clé API OpenAI."
+              />
+              <ProviderCard
+                active={settings.provider === "lmstudio"}
+                onClick={() => update("provider", "lmstudio" as AIProvider)}
+                title="LM Studio"
+                desc="Modèle local sur ta machine."
               />
             </div>
           </div>
