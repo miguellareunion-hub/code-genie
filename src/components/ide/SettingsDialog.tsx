@@ -44,6 +44,48 @@ export function SettingsDialog({ open, onClose, onSaved }: Props) {
     onClose();
   };
 
+  const handleTestLmStudio = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const base = settings.lmstudioBaseUrl.trim().replace(/\/$/, "");
+      const url = `${base}/models`;
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (settings.lmstudioApiKey.trim()) {
+        headers["Authorization"] = `Bearer ${settings.lmstudioApiKey.trim()}`;
+      }
+      const res = await fetch(url, { method: "GET", headers });
+      if (!res.ok) {
+        setTestResult({
+          ok: false,
+          message: `HTTP ${res.status} — ${res.statusText || "échec"}`,
+        });
+        return;
+      }
+      const data = (await res.json()) as { data?: Array<{ id: string }> };
+      const ids = data?.data?.map((m) => m.id) ?? [];
+      const found = ids.includes(settings.lmstudioModel.trim());
+      setTestResult({
+        ok: true,
+        message: found
+          ? `Connexion OK — modèle « ${settings.lmstudioModel} » trouvé.`
+          : `Connexion OK, mais le modèle « ${settings.lmstudioModel} » n'apparaît pas. Modèles dispo: ${ids.slice(0, 3).join(", ") || "aucun"}${ids.length > 3 ? "…" : ""}`,
+      });
+    } catch (err) {
+      setTestResult({
+        ok: false,
+        message:
+          err instanceof Error
+            ? `Échec: ${err.message} (CORS ou serveur arrêté ?)`
+            : "Échec inconnu",
+      });
+    } finally {
+      setTesting(false);
+    }
+  };
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
