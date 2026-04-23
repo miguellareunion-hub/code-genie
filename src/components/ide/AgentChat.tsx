@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import {
   Bot,
@@ -20,6 +20,7 @@ import {
   drainRuntimeErrors,
   type RuntimeError,
 } from "@/lib/runtimeErrors";
+import { validateProject, formatIssuesForFixer } from "@/lib/projectValidator";
 
 type AgentRole = "builder" | "fixer" | "planner";
 
