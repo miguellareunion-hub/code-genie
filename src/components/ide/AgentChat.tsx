@@ -258,6 +258,75 @@ export function AgentChat({
     return drainRuntimeErrors(sinceTs);
   };
 
+  /** Run a single builder + fixer cycle for one instruction (an entire prompt OR one plan step). */
+  const runBuildCycle = async (
+    instruction: string,
+    priorMessages: Msg[],
+    controller: AbortController,
+    stepLabel?: string,
+  ): Promise<boolean> => {
+    clearRuntimeErrors();
+    const prefix = stepLabel ? `${stepLabel}\n\n` : "";
+    const builderUserMsg: Msg = {
+      role: "user",
+      content: `${prefix}${instruction}\n\n<context>\n${buildContext(getLatestFiles(), activeFile?.name)}\n</context>`,
+    };
+    const builderHistory: Msg[] = [...priorMessages, builderUserMsg];
+    const builderResult = await runAgentTurn("builder", builderHistory, controller.signal);
+    if (!builderResult) return false;
+    const builderFailures = applyActions(builderResult.actions);
+    if (builderFailures.length > 0) {
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: `⚠️ ${builderFailures.join("\n")}` },
+      ]);
+      return false;
+    }
+    if (builderResult.actions.length > 0) onSwitchToPreview?.();
+
+    // Fixer loop
+    let lastAssistantText = builderResult.text;
+    for (let iter = 1; iter <= MAX_FIX_ITERATIONS; iter++) {
+      if (controller.signal.aborted) break;
+      setStatusLine(`Running project & checking for errors (pass ${iter})…`);
+      const checkpoint = Date.now() - 50;
+      const errors = await observeRuntime(checkpoint);
+      if (errors.length === 0) {
+        setStatusLine("");
+        break;
+      }
+      setStatusLine(
+        `Fixer agent detected ${errors.length} runtime error${errors.length > 1 ? "s" : ""}. Repairing…`,
+      );
+      const errorBlock = errors.map((e) => `- ${e.msg}`).join("\n");
+      const fixerUserMsg: Msg = {
+        role: "user",
+        content:
+          `The previous code produced runtime errors when executed in the iframe preview.\n\n` +
+          `Errors:\n${errorBlock}\n\n` +
+          `<context>\n${buildContext(getLatestFiles())}\n</context>\n\n` +
+          `Fix the bug(s). Re-emit ONLY the file(s) that need changes using <lov-write>.`,
+      };
+      const fixerHistory: Msg[] = [
+        { role: "assistant", content: lastAssistantText },
+        fixerUserMsg,
+      ];
+      const fixerResult = await runAgentTurn("fixer", fixerHistory, controller.signal);
+      if (!fixerResult) break;
+      const fixerFailures = applyActions(fixerResult.actions);
+      if (fixerFailures.length > 0) {
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: `⚠️ ${fixerFailures.join("\n")}` },
+        ]);
+        break;
+      }
+      lastAssistantText = fixerResult.text;
+      clearRuntimeErrors();
+    }
+    return true;
+  };
+
   const send = async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed || loading) return;
@@ -267,79 +336,58 @@ export function AgentChat({
     setMessages(baseHistory);
     setInput("");
     setLoading(true);
-    setStatusLine("Builder agent is thinking…");
 
     const controller = new AbortController();
     abortRef.current = controller;
 
     try {
-      // ---------- Builder turn ----------
-      clearRuntimeErrors();
-      const builderUserMsg: Msg = {
-        role: "user",
-        content: `${trimmed}\n\n<context>\n${buildContext(files, activeFile?.name)}\n</context>`,
-      };
-      const builderHistory: Msg[] = [
-        ...messages,
-        builderUserMsg,
-      ];
-      const builderResult = await runAgentTurn("builder", builderHistory, controller.signal);
-      if (!builderResult) return;
-      const builderFailures = applyActions(builderResult.actions);
-      if (builderFailures.length > 0) {
+      // ---------- Optional planning phase for big prompts ----------
+      let plan: PlanStep[] | null = null;
+      if (shouldPlan(trimmed)) {
+        setStatusLine("Planner agent is breaking your request into steps…");
+        const plannerHistory: Msg[] = [
+          {
+            role: "user",
+            content: `User request:\n"""${trimmed}"""\n\nProject currently has these files:\n${
+              files.length === 0 ? "(empty)" : files.map((f) => f.name).join(", ")
+            }\n\nReturn the plan now as JSON only.`,
+          },
+        ];
+        const plannerResult = await runAgentTurn("planner", plannerHistory, controller.signal);
+        if (plannerResult) {
+          plan = extractPlan(plannerResult.text);
+        }
+      }
+
+      if (plan && plan.length > 1) {
         setMessages((prev) => [
           ...prev,
-          { role: "assistant", content: `⚠️ ${builderFailures.join("\n")}` },
+          {
+            role: "assistant",
+            content:
+              `📋 **Plan en ${plan!.length} étapes :**\n\n` +
+              plan!.map((s, i) => `${i + 1}. **${s.title}** — ${s.instruction}`).join("\n"),
+          },
         ]);
-        return;
-      }
-      if (builderResult.actions.length > 0) onSwitchToPreview?.();
 
-      // ---------- Fixer loop ----------
-      let lastAssistantText = builderResult.text;
-      for (let iter = 1; iter <= MAX_FIX_ITERATIONS; iter++) {
-        if (controller.signal.aborted) break;
-        setStatusLine(`Running project & checking for errors (pass ${iter})…`);
-        const checkpoint = Date.now() - 50;
-        const errors = await observeRuntime(checkpoint);
-        if (errors.length === 0) {
-          setStatusLine(""); // 
-          break;
+        for (let i = 0; i < plan.length; i++) {
+          if (controller.signal.aborted) break;
+          const step = plan[i];
+          setStatusLine(`Étape ${i + 1}/${plan.length} : ${step.title}…`);
+          const ok = await runBuildCycle(
+            step.instruction,
+            messages,
+            controller,
+            `(Original user goal: ${trimmed})\n\nStep ${i + 1}/${plan.length} — ${step.title}`,
+          );
+          if (!ok) break;
         }
-
-        setStatusLine(
-          `Fixer agent detected ${errors.length} runtime error${errors.length > 1 ? "s" : ""}. Repairing…`,
-        );
-
-        const errorBlock = errors.map((e) => `- ${e.msg}`).join("\n");
-        const fixerUserMsg: Msg = {
-          role: "user",
-          content:
-            `The previous code produced runtime errors when executed in the iframe preview.\n\n` +
-            `Errors:\n${errorBlock}\n\n` +
-            `<context>\n${buildContext(getLatestFiles())}\n</context>\n\n` +
-            `Fix the bug(s). Re-emit ONLY the file(s) that need changes using <lov-write>.`,
-        };
-
-        // We pass the prior assistant text + new fixer prompt as fresh context,
-        // skipping the long original conversation to keep tokens small.
-        const fixerHistory: Msg[] = [
-          { role: "assistant", content: lastAssistantText },
-          fixerUserMsg,
-        ];
-        const fixerResult = await runAgentTurn("fixer", fixerHistory, controller.signal);
-        if (!fixerResult) break;
-        const fixerFailures = applyActions(fixerResult.actions);
-        if (fixerFailures.length > 0) {
-          setMessages((prev) => [
-            ...prev,
-            { role: "assistant", content: `⚠️ ${fixerFailures.join("\n")}` },
-          ]);
-          break;
-        }
-        lastAssistantText = fixerResult.text;
-        clearRuntimeErrors();
+      } else {
+        // Simple single-shot prompt
+        setStatusLine("Builder agent is thinking…");
+        await runBuildCycle(trimmed, messages, controller);
       }
+
       setStatusLine("");
     } catch (err) {
       if ((err as Error).name !== "AbortError") {
