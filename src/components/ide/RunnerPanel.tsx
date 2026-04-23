@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Play, Square, Loader2, ExternalLink, Settings as SettingsIcon, Trash2, Server, Wrench } from "lucide-react";
+import { Play, Square, Loader2, ExternalLink, Settings as SettingsIcon, Trash2, Server, Wrench, RefreshCw, Sparkles } from "lucide-react";
 import type { FileNode } from "@/lib/projects";
 import { loadRunnerSettings, saveRunnerSettings, type RunnerSettings } from "@/lib/runnerSettings";
 import { pushRuntimeError } from "@/lib/runtimeErrors";
@@ -44,8 +44,13 @@ export function RunnerPanel({ projectId, files }: Props) {
   const [busy, setBusy] = useState(false);
   const [previewKey, setPreviewKey] = useState(0);
   const [healthMsg, setHealthMsg] = useState<string | null>(null);
+  const [agentActivity, setAgentActivity] = useState<string | null>(null);
+  const [autoSync, setAutoSync] = useState(true);
+  const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
+  const filesRef = useRef(files);
+  filesRef.current = files;
 
   const baseUrl = settings.url.replace(/\/+$/, "");
   const previewUrl = `${baseUrl}/preview/${encodeURIComponent(projectId)}/`;
@@ -98,14 +103,40 @@ export function RunnerPanel({ projectId, files }: Props) {
   // Auto-run when the agent finishes a cycle (if URL + token are configured).
   useEffect(() => {
     const onAgentDone = () => {
+      setAgentActivity(null);
       if (!settings.token || !settings.url) return;
       // Fire and forget — handleRun reads the latest files via closure.
       void handleRun();
     };
+    const onAgentStart = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ label?: string }>).detail;
+      setAgentActivity(detail?.label ?? "Agent en cours…");
+    };
+    const onAgentStatus = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ label?: string }>).detail;
+      if (detail?.label) setAgentActivity(detail.label);
+    };
+    const onAgentFileWrite = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ path?: string }>).detail;
+      if (detail?.path) {
+        setLogs((p) => [
+          ...p.slice(-1999),
+          { level: "system", line: `✎ Agent a écrit ${detail.path}`, ts: Date.now() },
+        ]);
+      }
+    };
     window.addEventListener("lovable:agent-done", onAgentDone);
-    return () => window.removeEventListener("lovable:agent-done", onAgentDone);
+    window.addEventListener("lovable:agent-start", onAgentStart);
+    window.addEventListener("lovable:agent-status", onAgentStatus);
+    window.addEventListener("lovable:agent-file-write", onAgentFileWrite);
+    return () => {
+      window.removeEventListener("lovable:agent-done", onAgentDone);
+      window.removeEventListener("lovable:agent-start", onAgentStart);
+      window.removeEventListener("lovable:agent-status", onAgentStatus);
+      window.removeEventListener("lovable:agent-file-write", onAgentFileWrite);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings.token, settings.url, files, projectId, settings.script]);
+  }, [settings.token, settings.url, projectId, settings.script]);
 
   const checkHealth = useCallback(async () => {
     setHealthMsg("…");
@@ -171,6 +202,50 @@ export function RunnerPanel({ projectId, files }: Props) {
     }
   }, [baseUrl, projectId, settings.token]);
 
+  const handleRefreshPreview = useCallback(() => {
+    setPreviewKey((k) => k + 1);
+  }, []);
+
+  // Hot-sync: while the runner is up AND autoSync is on, re-send files to the
+  // runner whenever they change. Debounced so rapid agent edits coalesce.
+  useEffect(() => {
+    if (!autoSync) return;
+    if (!settings.token || !settings.url) return;
+    if (status !== "running" && status !== "installing") return;
+    const t = window.setTimeout(async () => {
+      try {
+        const payload = {
+          projectId,
+          script: settings.script || "dev",
+          files: filesRef.current.map((f) => ({ path: f.name, content: f.content })),
+        };
+        await fetch(`${baseUrl}/api/sync`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${settings.token}`,
+          },
+          body: JSON.stringify(payload),
+        }).catch(() => {
+          // /api/sync may not exist on older runner-server; fall back to /api/run
+          return fetch(`${baseUrl}/api/run`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${settings.token}`,
+            },
+            body: JSON.stringify(payload),
+          });
+        });
+        setLastSyncedAt(Date.now());
+        setPreviewKey((k) => k + 1);
+      } catch {
+        /* ignore — logs already capture errors */
+      }
+    }, 600);
+    return () => window.clearTimeout(t);
+  }, [files, autoSync, status, baseUrl, projectId, settings.script, settings.token, settings.url]);
+
   const isRunning = status === "running" || status === "installing" || status === "starting";
 
   return (
@@ -205,6 +280,13 @@ export function RunnerPanel({ projectId, files }: Props) {
               Run
             </button>
           )}
+          <button
+            onClick={handleRefreshPreview}
+            className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+            title="Recharger la preview"
+          >
+            <RefreshCw className="h-4 w-4" />
+          </button>
           <a
             href={previewUrl}
             target="_blank"
@@ -229,6 +311,33 @@ export function RunnerPanel({ projectId, files }: Props) {
             <SettingsIcon className="h-4 w-4" />
           </button>
         </div>
+      </div>
+
+      {/* Live agent activity bar — visible while the agent is generating/fixing code */}
+      {agentActivity && (
+        <div className="flex items-center gap-2 border-b border-primary/30 bg-primary/10 px-3 py-1.5 text-xs text-primary">
+          <Sparkles className="h-3.5 w-3.5 animate-pulse" />
+          <span className="flex-1 truncate">{agentActivity}</span>
+          <span className="text-[10px] text-primary/70">l'agent écrit le code…</span>
+        </div>
+      )}
+
+      {/* Auto-sync toggle bar */}
+      <div className="flex items-center gap-3 border-b border-border bg-[var(--sidebar-bg)] px-3 py-1 text-[11px] text-muted-foreground">
+        <label className="flex items-center gap-1.5 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={autoSync}
+            onChange={(e) => setAutoSync(e.target.checked)}
+            className="h-3 w-3"
+          />
+          Auto-sync fichiers vers le runner
+        </label>
+        {lastSyncedAt && (
+          <span className="text-[10px] opacity-70">
+            Dernière sync : {new Date(lastSyncedAt).toLocaleTimeString([], { hour12: false })}
+          </span>
+        )}
       </div>
 
       {showSettings && (

@@ -111,9 +111,19 @@ export function AgentChat({
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [statusLine, setStatusLine] = useState<string>("");
+  const [statusLine, setStatusLineRaw] = useState<string>("");
   const abortRef = useRef<AbortController | null>(null);
   const sendRef = useRef<((text: string) => void) | null>(null);
+
+  /** Wrap setStatusLine so the RunnerPanel can show what the agent is doing in real time. */
+  const setStatusLine = (s: string) => {
+    setStatusLineRaw(s);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("lovable:agent-status", { detail: { label: s } }),
+      );
+    }
+  };
 
   // Listen for "Fix this error" buttons in the RunnerPanel (and any other source).
   useEffect(() => {
@@ -279,9 +289,28 @@ export function AgentChat({
     const failures: string[] = [];
     for (const a of actions) {
       try {
-        if (a.type === "write") onWriteFile(a.path, a.content);
-        else if (a.type === "rename") onRenameFile(a.from, a.to);
-        else if (a.type === "delete") onDeleteFile(a.path);
+        if (a.type === "write") {
+          onWriteFile(a.path, a.content);
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(
+              new CustomEvent("lovable:agent-file-write", { detail: { path: a.path } }),
+            );
+          }
+        } else if (a.type === "rename") {
+          onRenameFile(a.from, a.to);
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(
+              new CustomEvent("lovable:agent-file-write", { detail: { path: `${a.from} → ${a.to}` } }),
+            );
+          }
+        } else if (a.type === "delete") {
+          onDeleteFile(a.path);
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(
+              new CustomEvent("lovable:agent-file-write", { detail: { path: `🗑 ${a.path}` } }),
+            );
+          }
+        }
       } catch (e) {
         console.error("Failed to apply agent action", a, e);
         const message = e instanceof Error ? e.message : "Unknown write error";
@@ -492,6 +521,13 @@ export function AgentChat({
     setMessages(baseHistory);
     setInput("");
     setLoading(true);
+
+    // Notify the Runner panel that an agent cycle just started
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("lovable:agent-start", { detail: { label: "Agent démarre…" } }),
+      );
+    }
 
     const controller = new AbortController();
     abortRef.current = controller;
