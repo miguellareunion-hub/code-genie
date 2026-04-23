@@ -3,13 +3,19 @@ import { createFileRoute } from "@tanstack/react-router";
 type AgentRole = "builder" | "fixer" | "planner";
 
 type ChatBody = {
-  messages: { role: "user" | "assistant" | "system"; content: string }[];
+  messages: { role: "user" | "assistant" | "system" | "tool"; content: string; tool_call_id?: string; tool_calls?: unknown }[];
   provider?: "lovable" | "openai";
   model?: string;
   openaiApiKey?: string;
   role?: AgentRole;
   /** Optional custom system prompt that overrides the default for this role. */
   systemPromptOverride?: string;
+  /** Tool-calling support — when present, the model can emit structured tool_calls. */
+  tools?: unknown[];
+  /** "auto" | "none" | { type:"function", function:{ name } } */
+  tool_choice?: unknown;
+  /** When true, return a single non-streamed JSON response (needed for tool-call loops). */
+  nonStreaming?: boolean;
 };
 
 const BASE_RULES = `# Environment constraints
