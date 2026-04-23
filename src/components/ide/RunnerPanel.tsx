@@ -280,6 +280,13 @@ export function RunnerPanel({ projectId, files }: Props) {
               Run
             </button>
           )}
+          <button
+            onClick={handleRefreshPreview}
+            className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+            title="Recharger la preview"
+          >
+            <RefreshCw className="h-4 w-4" />
+          </button>
           <a
             href={previewUrl}
             target="_blank"
@@ -304,6 +311,33 @@ export function RunnerPanel({ projectId, files }: Props) {
             <SettingsIcon className="h-4 w-4" />
           </button>
         </div>
+      </div>
+
+      {/* Live agent activity bar — visible while the agent is generating/fixing code */}
+      {agentActivity && (
+        <div className="flex items-center gap-2 border-b border-primary/30 bg-primary/10 px-3 py-1.5 text-xs text-primary">
+          <Sparkles className="h-3.5 w-3.5 animate-pulse" />
+          <span className="flex-1 truncate">{agentActivity}</span>
+          <span className="text-[10px] text-primary/70">l'agent écrit le code…</span>
+        </div>
+      )}
+
+      {/* Auto-sync toggle bar */}
+      <div className="flex items-center gap-3 border-b border-border bg-[var(--sidebar-bg)] px-3 py-1 text-[11px] text-muted-foreground">
+        <label className="flex items-center gap-1.5 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={autoSync}
+            onChange={(e) => setAutoSync(e.target.checked)}
+            className="h-3 w-3"
+          />
+          Auto-sync fichiers vers le runner
+        </label>
+        {lastSyncedAt && (
+          <span className="text-[10px] opacity-70">
+            Dernière sync : {new Date(lastSyncedAt).toLocaleTimeString([], { hour12: false })}
+          </span>
+        )}
       </div>
 
       {showSettings && (
