@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Eye, EyeOff, X, KeyRound, Sparkles, ExternalLink } from "lucide-react";
+import { Eye, EyeOff, X, KeyRound, Sparkles, ExternalLink, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import {
   type AISettings,
   type AIProvider,
@@ -20,9 +20,17 @@ interface Props {
 export function SettingsDialog({ open, onClose, onSaved }: Props) {
   const [settings, setSettings] = useState<AISettings>(DEFAULT_SETTINGS);
   const [showKey, setShowKey] = useState(false);
+  const [showLmKey, setShowLmKey] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<
+    { ok: boolean; message: string } | null
+  >(null);
 
   useEffect(() => {
-    if (open) setSettings(loadAISettings());
+    if (open) {
+      setSettings(loadAISettings());
+      setTestResult(null);
+    }
   }, [open]);
 
   if (!open) return null;
