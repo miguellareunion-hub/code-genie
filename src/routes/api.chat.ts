@@ -86,7 +86,7 @@ function getSystemPrompt(role: AgentRole): string {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const Route = createFileRoute("/api/chat")({
+export const Route = (createFileRoute as any)("/api/chat")({
   server: {
     handlers: {
       POST: async ({ request }: { request: Request }) => {
