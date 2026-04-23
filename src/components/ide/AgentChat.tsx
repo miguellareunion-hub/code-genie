@@ -21,6 +21,7 @@ import {
   type RuntimeError,
 } from "@/lib/runtimeErrors";
 import { validateProject, formatIssuesForFixer } from "@/lib/projectValidator";
+import { detectIntent, MODIFY_GUARD_PROMPT } from "@/lib/intentDetector";
 
 type AgentRole = "builder" | "fixer" | "planner";
 
@@ -338,6 +339,8 @@ export function AgentChat({
     priorMessages: Msg[],
     controller: AbortController,
     stepLabel?: string,
+    /** Optional intent override (for plan steps we always treat them as targeted). */
+    intentOverride?: "modify" | "create",
   ): Promise<boolean> => {
     const agentsSettings = loadAgentsSettings();
     if (!agentsSettings.builder.enabled) {
@@ -353,10 +356,20 @@ export function AgentChat({
     }
 
     clearRuntimeErrors();
+    const currentFiles = getLatestFiles();
+    const intent =
+      intentOverride ?? detectIntent(instruction, currentFiles.length > 0);
+    const guardBlock =
+      intent === "modify"
+        ? `${MODIFY_GUARD_PROMPT}\n\n`
+        : "";
+    if (intent === "modify") {
+      setStatusLine("Mode modification ciblée détecté — édition minimale…");
+    }
     const prefix = stepLabel ? `${stepLabel}\n\n` : "";
     const builderUserMsg: Msg = {
       role: "user",
-      content: `${prefix}${instruction}\n\n<context>\n${buildContext(getLatestFiles(), activeFile?.name)}\n</context>`,
+      content: `${guardBlock}${prefix}${instruction}\n\n<context>\n${buildContext(currentFiles, activeFile?.name)}\n</context>`,
     };
     const builderHistory: Msg[] = [...priorMessages, builderUserMsg];
     const builderResult = await runAgentTurn("builder", builderHistory, controller.signal);
@@ -534,9 +547,15 @@ export function AgentChat({
 
     try {
       const agentsSettings = loadAgentsSettings();
-      // ---------- Optional planning phase for big prompts ----------
+      const currentFilesNow = getLatestFiles();
+      const topIntent = detectIntent(trimmed, currentFilesNow.length > 0);
+
+      // ---------- Optional planning phase for big CREATION prompts only ----------
+      // Don't plan a targeted modification — that's what makes the agent
+      // rewrite the whole project step by step.
       let plan: PlanStep[] | null = null;
       if (
+        topIntent === "create" &&
         agentsSettings.planner.enabled &&
         shouldPlan(trimmed, agentsSettings.plannerMinChars)
       ) {

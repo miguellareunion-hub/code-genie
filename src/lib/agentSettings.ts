@@ -51,17 +51,35 @@ Split a long/complex user request into 2-6 SMALL ordered build steps for the BUI
 - Step 1 is always the base structure (HTML+CSS+JS skeleton).
 - Each next step adds ONE feature on top. Max 6 steps. No prose, no markdown fences.`;
 
-/** Pre-configured "Lovable-style" agents seeded by default. Each one mimics
- *  one of the things the main Lovable agent does for the user.
- *  Stable ids let us merge them into older saved settings without dupes. */
+/** Pre-configured "Lovable-style" agents seeded by default. */
 export const PRESET_CUSTOM_AGENTS: CustomAgent[] = [
+  {
+    id: "preset-patcher",
+    name: "Patcher",
+    emoji: "🩹",
+    description:
+      "Garantit que les demandes de modification ne réécrivent PAS tout le projet : ne touche qu'aux fichiers nécessaires.",
+    role: "builder",
+    enabled: true,
+    systemPrompt: `You are the PATCHER agent inside Lovable IDE.
+The Builder may have over-rewritten the project. Your job: ENFORCE minimal edits.
+
+Hard rules:
+- Look at <context>: which files were ACTUALLY needed to fulfill the user request?
+- If the Builder re-emitted files that did NOT need to change, that is a bug. DO NOT re-emit them yourself either — the previous version on disk is canonical.
+- If the Builder MISSED a file that needed a small touch (e.g. wiring a new button to an existing handler), re-emit ONLY that file with <lov-write>.
+- If the Builder's output is already minimal and correct, just say "Patch OK" and emit nothing.
+- NEVER use <lov-delete> unless the user explicitly asked to delete that file.
+- Preserve all existing variable names, IDs, classes, exported APIs.
+- Always output COMPLETE files when you do write.`,
+  },
   {
     id: "preset-designer",
     name: "Designer",
     emoji: "🎨",
     description: "Améliore le visuel : couleurs, typographie, espacement, hiérarchie.",
     role: "builder",
-    enabled: true,
+    enabled: false,
     systemPrompt: `You are the DESIGNER agent inside Lovable IDE.
 The Builder just produced a working project. Your job: make it BEAUTIFUL.
 - Improve visual hierarchy, typography, spacing, colors and contrast.
@@ -77,7 +95,7 @@ The Builder just produced a working project. Your job: make it BEAUTIFUL.
     emoji: "🧹",
     description: "Nettoie le code : nommage, fonctions trop longues, duplication.",
     role: "builder",
-    enabled: true,
+    enabled: false,
     systemPrompt: `You are the REFACTORER agent inside Lovable IDE.
 Read the project produced by the Builder and improve code quality WITHOUT changing behaviour.
 - Split functions > 40 lines, give clearer names, remove dead code and duplication.
@@ -119,7 +137,7 @@ A previous Fixer pass already attempted to repair runtime errors. Your job is a 
     emoji: "🔍",
     description: "Améliore <title>, meta description, balises sémantiques et og:tags.",
     role: "builder",
-    enabled: true,
+    enabled: false,
     systemPrompt: `You are the SEO agent inside Lovable IDE.
 Improve discoverability of the project's index.html:
 - Make sure <title> is unique, < 60 chars, and contains the key topic.
@@ -134,7 +152,7 @@ Re-emit index.html with <lov-write> if any change is needed. Don't touch JS or C
     emoji: "⚡",
     description: "Détecte les boucles inutiles, gros DOM, listeners en double, images lourdes.",
     role: "builder",
-    enabled: true,
+    enabled: false,
     systemPrompt: `You are the PERFORMANCE agent inside Lovable IDE.
 Look for obvious performance problems in the current project:
 - Event listeners added in loops or re-attached on every render.
