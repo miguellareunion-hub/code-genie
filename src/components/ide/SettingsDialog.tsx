@@ -256,6 +256,72 @@ export function SettingsDialog({ open, onClose, onSaved }: Props) {
                   L'identifiant exact du modèle chargé dans LM Studio.
                 </p>
               </div>
+              <div>
+                <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-foreground">
+                  <KeyRound className="h-3.5 w-3.5" /> API Key (optionnel)
+                </label>
+                <div className="flex items-center gap-2 rounded-md border border-border bg-input px-2 focus-within:border-primary">
+                  <input
+                    type={showLmKey ? "text" : "password"}
+                    value={settings.lmstudioApiKey}
+                    onChange={(e) => update("lmstudioApiKey", e.target.value)}
+                    placeholder="lm-studio (par défaut) ou laisser vide"
+                    className="flex-1 bg-transparent py-2 text-sm outline-none placeholder:text-muted-foreground"
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowLmKey((v) => !v)}
+                    className="text-muted-foreground hover:text-foreground"
+                  >
+                    {showLmKey ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
+                <p className="mt-1.5 text-[11px] text-muted-foreground">
+                  LM Studio n'exige pas de clé par défaut. Renseigne-la seulement si tu as activé l'authentification.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleTestLmStudio}
+                  disabled={
+                    testing ||
+                    !settings.lmstudioBaseUrl.trim() ||
+                    !settings.lmstudioModel.trim()
+                  }
+                  className="inline-flex items-center gap-1.5 rounded-md border border-border bg-input px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-50"
+                >
+                  {testing ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" /> Test en cours…
+                    </>
+                  ) : (
+                    <>Tester la connexion</>
+                  )}
+                </button>
+                {testResult && (
+                  <span
+                    className={cn(
+                      "inline-flex items-center gap-1 text-[11px]",
+                      testResult.ok ? "text-primary" : "text-destructive",
+                    )}
+                  >
+                    {testResult.ok ? (
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                    ) : (
+                      <XCircle className="h-3.5 w-3.5" />
+                    )}
+                    {testResult.message}
+                  </span>
+                )}
+              </div>
               <div className="rounded border border-border bg-muted p-2 text-[11px] text-muted-foreground">
                 ⚠️ L'appel se fait directement depuis ton navigateur vers LM Studio.
                 Ça ne marchera que si LM Studio tourne sur la même machine que celle où tu ouvres l'aperçu, et si CORS est activé dans LM Studio.
