@@ -493,6 +493,13 @@ export function AgentChat({
     setInput("");
     setLoading(true);
 
+    // Notify the Runner panel that an agent cycle just started
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("lovable:agent-start", { detail: { label: "Agent démarre…" } }),
+      );
+    }
+
     const controller = new AbortController();
     abortRef.current = controller;
 
