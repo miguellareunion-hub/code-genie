@@ -378,24 +378,44 @@ export function AgentChat({
     let lastAssistantText = builderResult.text;
     for (let iter = 1; iter <= agentsSettings.maxFixIterations; iter++) {
       if (controller.signal.aborted) break;
-      setStatusLine(`Running project & checking for errors (pass ${iter})…`);
+
+      // 1. Static pre-run validation (catches export/import mismatches BEFORE running)
+      const validationIssues = validateProject(getLatestFiles());
+
+      // 2. Runtime errors collected from the iframe preview AND the Node runner
+      setStatusLine(`Vérification du projet (passe ${iter}/${agentsSettings.maxFixIterations})…`);
       const checkpoint = Date.now() - 50;
-      const errors = await observeRuntime(checkpoint);
-      if (errors.length === 0) {
+      const runtimeErrs = await observeRuntime(checkpoint);
+
+      const totalProblems = validationIssues.length + runtimeErrs.length;
+      if (totalProblems === 0) {
         setStatusLine("");
         break;
       }
+
+      const errorBlock = [
+        validationIssues.length > 0
+          ? `## Static validation issues (detected before run)\n${formatIssuesForFixer(validationIssues)}`
+          : "",
+        runtimeErrs.length > 0
+          ? `## Runtime errors (from preview / Node runner)\n${runtimeErrs.map((e) => `- ${e.msg}`).join("\n")}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+
       setStatusLine(
-        `Fixer agent detected ${errors.length} runtime error${errors.length > 1 ? "s" : ""}. Repairing…`,
+        `Fixer agent : ${totalProblems} problème${totalProblems > 1 ? "s" : ""} détecté${totalProblems > 1 ? "s" : ""}. Correction en cours (passe ${iter}/${agentsSettings.maxFixIterations})…`,
       );
-      const errorBlock = errors.map((e) => `- ${e.msg}`).join("\n");
+
       const fixerUserMsg: Msg = {
         role: "user",
         content:
-          `The previous code produced runtime errors when executed in the iframe preview.\n\n` +
-          `Errors:\n${errorBlock}\n\n` +
+          `The previous code has problems that need fixing.\n\n` +
+          `${errorBlock}\n\n` +
           `<context>\n${buildContext(getLatestFiles())}\n</context>\n\n` +
-          `Fix the bug(s). Re-emit ONLY the file(s) that need changes using <lov-write>.`,
+          `Fix the ROOT cause of every problem above. Re-emit ONLY the file(s) that need changes using <lov-write>. ` +
+          `If you change exports in one file, also re-check every file that imports from it.`,
       };
       const fixerHistory: Msg[] = [
         { role: "assistant", content: lastAssistantText },
@@ -412,6 +432,7 @@ export function AgentChat({
         break;
       }
       lastAssistantText = fixerResult.text;
+      if (fixerResult.actions.length > 0) onSwitchToPreview?.();
 
       // ---- Custom fixer agents: extra repair passes ----
       const customFixers = agentsSettings.customAgents.filter(
