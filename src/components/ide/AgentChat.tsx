@@ -13,6 +13,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { FileNode } from "@/lib/projects";
 import { loadAISettings } from "@/lib/aiSettings";
+import { loadAgentsSettings } from "@/lib/agentSettings";
 import { parseAgentOutput, type AgentAction } from "@/lib/agentActions";
 import {
   clearRuntimeErrors,
