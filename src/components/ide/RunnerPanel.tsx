@@ -59,6 +59,18 @@ export function RunnerPanel({ projectId, files }: Props) {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
   }, [logs.length]);
 
+  // Auto-run when the agent finishes a cycle (if URL + token are configured).
+  useEffect(() => {
+    const onAgentDone = () => {
+      if (!settings.token || !settings.url) return;
+      // Fire and forget — handleRun reads the latest files via closure.
+      void handleRun();
+    };
+    window.addEventListener("lovable:agent-done", onAgentDone);
+    return () => window.removeEventListener("lovable:agent-done", onAgentDone);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.token, settings.url, files, projectId, settings.script]);
+
   const checkHealth = useCallback(async () => {
     setHealthMsg("…");
     try {
