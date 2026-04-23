@@ -206,7 +206,7 @@ export function SettingsDialog({ open, onClose, onSaved }: Props) {
                   L'identifiant exact du modèle chargé dans LM Studio.
                 </p>
               </div>
-              <div className="rounded border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] text-amber-200">
+              <div className="rounded border border-border bg-muted p-2 text-[11px] text-muted-foreground">
                 ⚠️ L'appel se fait directement depuis ton navigateur vers LM Studio.
                 Ça ne marchera que si LM Studio tourne sur la même machine que celle où tu ouvres l'aperçu, et si CORS est activé dans LM Studio.
               </div>
