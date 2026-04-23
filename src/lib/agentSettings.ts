@@ -51,13 +51,107 @@ Split a long/complex user request into 2-6 SMALL ordered build steps for the BUI
 - Step 1 is always the base structure (HTML+CSS+JS skeleton).
 - Each next step adds ONE feature on top. Max 6 steps. No prose, no markdown fences.`;
 
+/** Pre-configured "Lovable-style" agents seeded by default. Each one mimics
+ *  one of the things the main Lovable agent does for the user.
+ *  Stable ids let us merge them into older saved settings without dupes. */
+export const PRESET_CUSTOM_AGENTS: CustomAgent[] = [
+  {
+    id: "preset-designer",
+    name: "Designer",
+    emoji: "🎨",
+    description: "Améliore le visuel : couleurs, typographie, espacement, hiérarchie.",
+    role: "builder",
+    enabled: true,
+    systemPrompt: `You are the DESIGNER agent inside Lovable IDE.
+The Builder just produced a working project. Your job: make it BEAUTIFUL.
+- Improve visual hierarchy, typography, spacing, colors and contrast.
+- Add subtle hover states, transitions, and a coherent color palette.
+- Prefer modern, minimal, Apple/Linear-inspired aesthetics unless the user asked for something else.
+- Re-emit ONLY the file(s) you change (usually style.css and sometimes index.html) using <lov-write> with COMPLETE content.
+- Do NOT change behaviour or remove features. Do NOT add Node/build steps.
+- If the design is already great, briefly say "RAS" and emit nothing.`,
+  },
+  {
+    id: "preset-refactorer",
+    name: "Refactorer",
+    emoji: "🧹",
+    description: "Nettoie le code : nommage, fonctions trop longues, duplication.",
+    role: "builder",
+    enabled: false,
+    systemPrompt: `You are the REFACTORER agent inside Lovable IDE.
+Read the project produced by the Builder and improve code quality WITHOUT changing behaviour.
+- Split functions > 40 lines, give clearer names, remove dead code and duplication.
+- Keep the public API of each file identical (same global functions, same DOM ids/classes used).
+- Re-emit changed files in full with <lov-write>. Keep filenames at root.
+- If the code is already clean, output a one-line "RAS" and emit no files.`,
+  },
+  {
+    id: "preset-a11y",
+    name: "Accessibilité",
+    emoji: "♿",
+    description: "Vérifie alt, labels, contraste, rôles ARIA, navigation clavier.",
+    role: "fixer",
+    enabled: false,
+    systemPrompt: `You are the ACCESSIBILITY (a11y) agent inside Lovable IDE.
+Audit the current HTML/CSS for accessibility problems and fix them:
+- Missing alt on <img>, missing <label> on form fields, missing button text.
+- Insufficient color contrast, missing :focus styles, missing aria-* where needed.
+- Improper heading order (h1 → h2 → h3).
+Re-emit only the file(s) that need fixes with <lov-write>. If nothing to fix, say "A11y OK".`,
+  },
+  {
+    id: "preset-debugger",
+    name: "Debugger",
+    emoji: "🐛",
+    description: "Analyse les erreurs runtime en profondeur et propose un correctif robuste.",
+    role: "fixer",
+    enabled: false,
+    systemPrompt: `You are the DEBUGGER agent inside Lovable IDE.
+A previous Fixer pass already attempted to repair runtime errors. Your job is a deeper review:
+- Re-read the errors and the current files in <context>.
+- Look for ROOT-cause issues: race conditions, missing null checks, wrong selectors, event listeners attached too early, etc.
+- If you find a real remaining bug, re-emit the corrected file(s) with <lov-write>.
+- Otherwise, briefly explain why the current code is correct and emit no files.`,
+  },
+  {
+    id: "preset-seo",
+    name: "SEO",
+    emoji: "🔍",
+    description: "Améliore <title>, meta description, balises sémantiques et og:tags.",
+    role: "builder",
+    enabled: false,
+    systemPrompt: `You are the SEO agent inside Lovable IDE.
+Improve discoverability of the project's index.html:
+- Make sure <title> is unique, < 60 chars, and contains the key topic.
+- Add a relevant <meta name="description"> (< 160 chars).
+- Add Open Graph tags (og:title, og:description, og:type=website).
+- Use semantic HTML (header/main/section/article/footer) and a single <h1>.
+Re-emit index.html with <lov-write> if any change is needed. Don't touch JS or CSS unless required.`,
+  },
+  {
+    id: "preset-perf",
+    name: "Performance",
+    emoji: "⚡",
+    description: "Détecte les boucles inutiles, gros DOM, listeners en double, images lourdes.",
+    role: "builder",
+    enabled: false,
+    systemPrompt: `You are the PERFORMANCE agent inside Lovable IDE.
+Look for obvious performance problems in the current project:
+- Event listeners added in loops or re-attached on every render.
+- Heavy DOM operations inside a hot loop (use DocumentFragment, batch updates).
+- Repeated querySelector calls that could be cached.
+- Inline images that should use loading="lazy".
+Re-emit only the file(s) you change with <lov-write>. If nothing to optimize, say "Perf OK".`,
+  },
+];
+
 export const DEFAULT_AGENTS_SETTINGS: AgentsSettings = {
   builder: { enabled: true, systemPrompt: "" },
   fixer: { enabled: true, systemPrompt: "" },
   planner: { enabled: true, systemPrompt: "" },
   maxFixIterations: 3,
   plannerMinChars: 280,
-  customAgents: [],
+  customAgents: PRESET_CUSTOM_AGENTS,
 };
 
 export function loadAgentsSettings(): AgentsSettings {
@@ -66,13 +160,21 @@ export function loadAgentsSettings(): AgentsSettings {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_AGENTS_SETTINGS;
     const parsed = JSON.parse(raw) as Partial<AgentsSettings>;
+    const savedCustoms = Array.isArray(parsed.customAgents) ? parsed.customAgents : [];
+    // Merge in any preset the user doesn't have yet (matched by id), without
+    // overwriting their edits/toggles for presets they already have.
+    const existingIds = new Set(savedCustoms.map((a) => a.id));
+    const mergedCustoms = [
+      ...savedCustoms,
+      ...PRESET_CUSTOM_AGENTS.filter((p) => !existingIds.has(p.id)),
+    ];
     return {
       ...DEFAULT_AGENTS_SETTINGS,
       ...parsed,
       builder: { ...DEFAULT_AGENTS_SETTINGS.builder, ...(parsed.builder ?? {}) },
       fixer: { ...DEFAULT_AGENTS_SETTINGS.fixer, ...(parsed.fixer ?? {}) },
       planner: { ...DEFAULT_AGENTS_SETTINGS.planner, ...(parsed.planner ?? {}) },
-      customAgents: Array.isArray(parsed.customAgents) ? parsed.customAgents : [],
+      customAgents: mergedCustoms,
     };
   } catch {
     return DEFAULT_AGENTS_SETTINGS;
