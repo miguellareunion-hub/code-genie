@@ -157,7 +157,10 @@ export function AgentChat({
 
     const settings = loadAISettings();
     const agentsSettings = loadAgentsSettings();
-    const override = agentsSettings[role].systemPrompt.trim();
+    const override =
+      explicitOverride !== undefined
+        ? explicitOverride.trim()
+        : agentsSettings[role].systemPrompt.trim();
     const isLmStudio = settings.provider === "lmstudio";
 
     const builtInLmStudioPrompt =
