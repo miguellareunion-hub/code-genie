@@ -109,7 +109,7 @@ export function AgentsDialog({ open, onClose }: Props) {
                     <span
                       className={cn(
                         "h-2 w-2 rounded-full",
-                        c.enabled ? "bg-emerald-500" : "bg-muted-foreground/40",
+                        c.enabled ? "bg-primary" : "bg-muted-foreground/40",
                       )}
                     />
                   </button>
@@ -188,7 +188,7 @@ export function AgentsDialog({ open, onClose }: Props) {
             </div>
 
             {!cfg.enabled && active !== "planner" && (
-              <div className="mb-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-500">
+              <div className="mb-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
                 ⚠️ Désactiver le {meta.name} cassera la chaîne (le pipeline ne pourra pas
                 {active === "builder" ? " écrire de fichiers" : " corriger les erreurs"}).
               </div>
