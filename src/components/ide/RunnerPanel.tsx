@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Play, Square, Loader2, ExternalLink, Settings as SettingsIcon, Trash2, Server } from "lucide-react";
+import { Play, Square, Loader2, ExternalLink, Settings as SettingsIcon, Trash2, Server, Wrench } from "lucide-react";
 import type { FileNode } from "@/lib/projects";
 import { loadRunnerSettings, saveRunnerSettings, type RunnerSettings } from "@/lib/runnerSettings";
+import { pushRuntimeError } from "@/lib/runtimeErrors";
 
 interface Props {
   projectId: string;
@@ -40,7 +41,18 @@ export function RunnerPanel({ projectId, files }: Props) {
     ws.onmessage = (ev) => {
       try {
         const m = JSON.parse(ev.data);
-        if (m.type === "log") setLogs((p) => [...p.slice(-1999), { level: m.level, line: m.line, ts: m.ts }]);
+        if (m.type === "log") {
+          const entry = { level: m.level, line: m.line, ts: m.ts };
+          setLogs((p) => [...p.slice(-1999), entry]);
+          // Forward stderr / process exit lines to the global runtime error bus
+          // so the Fixer agent picks them up automatically.
+          if (m.level === "stderr" && typeof m.line === "string") {
+            const trimmed = m.line.trim();
+            if (trimmed && isLikelyError(trimmed)) {
+              pushRuntimeError({ level: "stderr", msg: trimmed, ts: m.ts || Date.now() });
+            }
+          }
+        }
         if (m.type === "status") setStatus(m.status as Status);
       } catch (_) {
         /* ignore */
