@@ -30,13 +30,12 @@ export function useProject(projectId: string | undefined) {
   }, [projectId]);
 
   const persist = useCallback((updater: Project | ((current: Project | null) => Project | null)) => {
-    setProject((current) => {
-      const next = typeof updater === "function" ? updater(current) : updater;
-      if (!next) return current;
-      projectRef.current = next;
-      upsertProject(next);
-      return next;
-    });
+    const base = projectRef.current;
+    const next = typeof updater === "function" ? updater(base) : updater;
+    if (!next) return;
+    projectRef.current = next;
+    upsertProject(next);
+    setProject(next);
   }, []);
 
   const getLatestFiles = useCallback(() => projectRef.current?.files ?? [], []);
