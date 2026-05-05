@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type FileNode,
   type Project,
@@ -12,13 +12,16 @@ export function useProject(projectId: string | undefined) {
   const [project, setProject] = useState<Project | null>(null);
   const [activeFileId, setActiveFileId] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const projectRef = useRef<Project | null>(null);
 
   useEffect(() => {
     if (!projectId) {
+      projectRef.current = null;
       setLoaded(true);
       return;
     }
     const p = getProject(projectId);
+    projectRef.current = p ?? null;
     if (p) {
       setProject(p);
       setActiveFileId(p.files[0]?.id ?? null);
@@ -27,13 +30,15 @@ export function useProject(projectId: string | undefined) {
   }, [projectId]);
 
   const persist = useCallback((updater: Project | ((current: Project | null) => Project | null)) => {
-    setProject((current) => {
-      const next = typeof updater === "function" ? updater(current) : updater;
-      if (!next) return current;
-      upsertProject(next);
-      return next;
-    });
+    const base = projectRef.current;
+    const next = typeof updater === "function" ? updater(base) : updater;
+    if (!next) return;
+    projectRef.current = next;
+    upsertProject(next);
+    setProject(next);
   }, []);
+
+  const getLatestFiles = useCallback(() => projectRef.current?.files ?? [], []);
 
   const updateFile = useCallback(
     (fileId: string, content: string) => {
@@ -191,5 +196,6 @@ export function useProject(projectId: string | undefined) {
     writeFileByPath,
     renameFileByPath,
     deleteFileByPath,
+    getLatestFiles,
   };
 }

@@ -52,6 +52,7 @@ function IdePage() {
     writeFileByPath,
     renameFileByPath,
     deleteFileByPath,
+    getLatestFiles,
   } = useProject(projectId);
 
   const [rightTab, setRightTab] = useState<RightTab>("preview");
@@ -288,7 +289,7 @@ function IdePage() {
               onRenameFile={renameFileByPath}
               onDeleteFile={deleteFileByPath}
               onSwitchToPreview={() => setRightTab("preview")}
-              getLatestFiles={() => project.files}
+              getLatestFiles={getLatestFiles}
             />
           </div>
           <div className={cn("h-full", rightTab === "runner" ? "block" : "hidden")}>
