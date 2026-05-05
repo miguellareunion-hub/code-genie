@@ -438,7 +438,7 @@ export function AgentChat({
 
 # TOOLS YOU CAN CALL
 - \`list_files\` / \`read_file\` — inspect the project (projectId="${projectId}").
-- \`write_file\` / \`rename_file\` / \`delete_file\` — apply COMPLETE file content (no diffs).
+- \`write_file\` / \`rename_file\` / \`delete_file\` — apply COMPLETE file content (no diffs, no placeholders).
 - \`exec_shell\` — run a command in the project workspace (npm, node, ls, cat, git…).
 - \`http_fetch\` — call an HTTP endpoint from the runner (test the app, hit an API).
 - \`web_search\` — search the web for docs, error messages, API syntax, library versions.
@@ -448,9 +448,20 @@ export function AgentChat({
 1. **Understand first**: call \`list_files\`, then \`read_file\` on every file you intend to change. Never write a file blind.
 2. **Plan in 1 sentence** in plain text before acting (so the user sees what you're about to do).
 3. **Targeted edits**: only re-emit files that actually change. Preserve names, exports, ids, classes.
-4. **For Node projects**: ensure a correct package.json (deps + scripts), run \`npm install\` ONCE, then start with \`npm start\`/\`npm run dev\` or \`node <file>\`.
-5. **Verify**: after a fix, run a quick check (\`node -c file.js\`, \`npm run build\`, or \`http_fetch\` against the running app). Don't claim success without evidence.
-6. **Conclude**: call \`finish\` once the user's request is satisfied OR when you've identified a blocker you can't resolve.
+4. **For Node.js projects**, follow this exact pipeline — never skip a step:
+   a. Make sure \`package.json\` is correct (every imported package listed in deps; valid \`scripts.start\`).
+   b. Run \`exec_shell\` → \`npm install\` ONCE. If it fails, read the error, fix package.json, retry once.
+   c. Run \`exec_shell\` → \`node -c <entry>.js\` to check syntax of the entrypoint before launching.
+   d. Start the app with \`npm start\` (or \`node server.js\`) using \`timeoutMs: 5000\` so the call returns even if the server stays up.
+   e. Verify with \`http_fetch\` against the running server (e.g. \`http://localhost:3000/\`). A 2xx/3xx response = success.
+   f. Only then call \`finish\`.
+5. **For pure browser projects** (HTML/CSS/JS, no package.json): no shell needed. Just write the files; the iframe preview runs them automatically. Then \`finish\`.
+6. **Never claim success without evidence** (a passing http_fetch, a 0 exit code, or a clean \`node -c\`).
+
+# WRITING FILES — HARD RULES
+- ALWAYS pass the COMPLETE final code in \`content\`. Never the words "FULL CONTENT", "...", "<file content>" or any placeholder — these are rejected.
+- Never write a file you have not read first if it already exists.
+- Never re-emit a file that does not need to change.
 
 # DEBUGGING — THE GOLDEN LOOP
 When a tool returns an error you MUST react like a senior engineer, not by retrying blindly.
@@ -463,6 +474,7 @@ When a tool returns an error you MUST react like a senior engineer, not by retry
    - npm ERR! 404 / E404 → the package name is wrong. \`web_search\` for the correct package name BEFORE editing package.json again.
    - SyntaxError / ReferenceError → \`read_file\` the file at the reported line, fix the code, re-run.
    - EADDRINUSE → another process holds the port; either change PORT or stop and restart, do NOT loop \`npm start\`.
+   - ERR_REQUIRE_ESM / Cannot use import statement → fix \`"type": "module"\` in package.json or convert require/import accordingly.
    - Unknown / unfamiliar error → \`web_search\` "<key error message> <library>" and read the top result before acting.
 4. **Apply ONE focused fix** with \`write_file\`, then **re-run the failing command exactly once** to verify.
 5. **Stop and \`finish\`** if the same command fails twice with the same error after a fix. Explain the blocker to the user — do not keep looping.
@@ -473,6 +485,7 @@ When a tool returns an error you MUST react like a senior engineer, not by retry
 - Never re-run \`npm install\` more than twice in a row; if it keeps failing, the root cause is in package.json — read it and fix it.
 - Never delete a file the user didn't ask to delete.
 - Always emit COMPLETE file content with \`write_file\`.
+- Always end the session with a \`finish\` tool call.
 - One assistant turn = think out loud briefly + the next tool call(s). Don't dump huge prose.`;
 
     // Conversation history we send to the model. Tool messages get appended
