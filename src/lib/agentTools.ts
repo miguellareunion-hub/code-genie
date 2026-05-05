@@ -263,6 +263,23 @@ export async function executeTool(call: ToolCall, ctx: ToolContext): Promise<Too
       if (!p) {
         return { ok: false, label: "write_file sans path", content: JSON.stringify({ error: "path required" }) };
       }
+      // Reject placeholder leaks: weak models sometimes write the literal
+      // words "FULL CONTENT" instead of real code.
+      const trimmedContent = content.trim();
+      const isPlaceholder =
+        /^(FULL[_\s-]?CONTENT|FULL[_\s-]?FILE[_\s-]?CONTENT|<file[_\s-]?content>|\.\.\.)$/i.test(
+          trimmedContent,
+        );
+      if (isPlaceholder) {
+        return {
+          ok: false,
+          label: `write_file refusé (placeholder) ${p}`,
+          content: JSON.stringify({
+            error:
+              "You wrote the placeholder string instead of real file content. Retry write_file with the ACTUAL complete code for this file — never the words 'FULL CONTENT'.",
+          }),
+        };
+      }
       ctx.onWriteFile(p, content);
       if (typeof window !== "undefined") {
         window.dispatchEvent(
