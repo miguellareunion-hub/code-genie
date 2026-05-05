@@ -162,7 +162,7 @@ export function RunnerPanel({ projectId, files }: Props) {
       const payload = {
         projectId,
         script: settings.script || "dev",
-        files: files.map((f) => ({ path: f.name, content: f.content })),
+        files: filesRef.current.map((f) => ({ path: f.name, content: f.content })),
       };
       const r = await fetch(`${baseUrl}/api/run`, {
         method: "POST",
@@ -185,7 +185,7 @@ export function RunnerPanel({ projectId, files }: Props) {
     } finally {
       setBusy(false);
     }
-  }, [baseUrl, files, projectId, settings.script, settings.token]);
+  }, [baseUrl, projectId, settings.script, settings.token]);
 
   const handleStop = useCallback(async () => {
     setBusy(true);
