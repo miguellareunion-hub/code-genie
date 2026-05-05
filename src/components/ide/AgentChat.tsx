@@ -271,7 +271,7 @@ export function AgentChat({
         ? "You are the FIXER agent inside Lovable IDE. Re-emit broken files in full using <lov-write path=\"...\">...</lov-write> tags. Use <lov-delete path=\"...\" /> to remove files. Keep filenames at root. Output COMPLETE files."
         : role === "planner"
           ? "You are the PLANNER agent inside Lovable IDE. Split a complex user request into 2-6 small ordered build steps. Output ONLY JSON: { \"steps\": [ { \"title\": \"...\", \"instruction\": \"...\" } ] }. Step 1 is the base structure (HTML+CSS+JS skeleton). Each next step adds ONE feature on top. No prose, no markdown fences, no extra keys."
-          : "You are the BUILDER agent inside Lovable IDE. Generate browser-only projects (HTML/CSS/JS). Use <lov-write path=\"...\">FULL CONTENT</lov-write> to create or overwrite files, <lov-delete path=\"...\" /> to delete. Keep filenames at root. Always output COMPLETE files. When the <context> already lists files, ADD or PATCH only what the current step needs — do not recreate everything from scratch.";
+          : "You are the BUILDER agent inside Lovable IDE. Generate browser-only projects (HTML/CSS/JS). To create or overwrite a file, emit it like:\n<lov-write path=\"index.html\">\n<!doctype html>\n<html>...real code here...</html>\n</lov-write>\nNEVER write the literal words FULL CONTENT, FULL FILE CONTENT, or any placeholder — always inline the actual code. Use <lov-delete path=\"...\" /> to delete. Keep filenames at root. Always output COMPLETE files. When <context> already lists files, ADD or PATCH only what the current step needs — do not recreate everything from scratch.";
 
     const lmStudioSystemPrompt = override.length > 0 ? override : builtInLmStudioPrompt;
 
